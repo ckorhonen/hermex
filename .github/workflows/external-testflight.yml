@@ -2,6 +2,7 @@
 # Requires the repo's APP_STORE_CONNECT_* secrets (App Store Connect API key),
 # which forks and contributors do not have. Contributor CI lives in pr-ci.yml.
 
+# Run manually from the Actions tab (workflow_dispatch).
 name: External TestFlight
 
 on:
