@@ -859,8 +859,8 @@ struct ChatView: View {
             loadAttachmentData: { path in
                 await viewModel.attachmentRawData(path: path)
             },
-            loadTranscriptMediaImage: { reference in
-                await viewModel.transcriptMediaThumbnailData(for: reference)
+            loadTranscriptMediaData: { reference in
+                await viewModel.transcriptMediaData(for: reference)
             },
             actionContext: { message, visibleIndex in
                 viewModel.actionContext(for: message, visibleIndex: visibleIndex)

@@ -46,7 +46,7 @@ struct ChatTranscriptView: View {
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
-    let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
     let onLoadMessages: () async -> Void
@@ -232,7 +232,7 @@ struct ChatTranscriptView: View {
                     isForkingMessage: isForkingMessage,
                     loadAttachmentImage: loadAttachmentImage,
                     loadAttachmentData: loadAttachmentData,
-                    loadTranscriptMediaImage: loadTranscriptMediaImage,
+                    loadTranscriptMediaData: loadTranscriptMediaData,
                     actionContext: actionContext,
                     shouldRenderMessageRow: shouldRenderMessageRow,
                     onPreviewAttachment: onPreviewAttachment,
@@ -451,7 +451,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
-    let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
@@ -515,7 +515,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     isForkingMessage: isForkingMessage,
                     loadAttachmentImage: loadAttachmentImage,
                     loadAttachmentData: loadAttachmentData,
-                    loadTranscriptMediaImage: loadTranscriptMediaImage,
+                    loadTranscriptMediaData: loadTranscriptMediaData,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
                     onToggleListening: onToggleListening,
@@ -595,7 +595,7 @@ private struct ChatTranscriptMessageRow: View {
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
-    let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onToggleListening: (MessageActionContext) -> Void
@@ -640,7 +640,7 @@ private struct ChatTranscriptMessageRow: View {
             message: message,
             loadAttachmentImage: loadAttachmentImage,
             loadAttachmentData: loadAttachmentData,
-            loadTranscriptMediaImage: loadTranscriptMediaImage,
+            loadTranscriptMediaData: loadTranscriptMediaData,
             localAttachmentPreviews: localAttachmentPreviews,
             onPreviewAttachment: onPreviewAttachment,
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,

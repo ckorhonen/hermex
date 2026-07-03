@@ -11,18 +11,18 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
 
 struct TranscriptMediaContentView: View {
     let segments: [TranscriptMediaSegment]
-    let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
 
     init(
         segments: [TranscriptMediaSegment],
-        loadMediaImage: ((TranscriptMediaReference) async -> Data?)?,
+        loadMediaData: ((TranscriptMediaReference) async -> Data?)?,
         onPreviewMedia: ((TranscriptMediaReference) -> Void)?,
         isStreaming: Bool = false
     ) {
         self.segments = segments
-        self.loadMediaImage = loadMediaImage
+        self.loadMediaData = loadMediaData
         self.onPreviewMedia = onPreviewMedia
         self.isStreaming = isStreaming
     }
@@ -36,15 +36,23 @@ struct TranscriptMediaContentView: View {
                         MarkdownRenderer(content: text, isStreaming: isStreaming)
                     }
                 case let .media(reference):
-                    TranscriptMediaThumbnailView(
-                        reference: reference,
-                        loadMediaImage: loadMediaImage,
-                        onPreviewMedia: onPreviewMedia
-                    )
-                    // Pin the image container LTR so media keeps its leading-edge
-                    // anchor inside an RTL message (#259); the text segments above
-                    // still follow the chat direction.
-                    .forcedLeftToRight()
+                    if reference.isAudioCandidate {
+                        TranscriptMediaAudioView(
+                            reference: reference,
+                            loadMediaData: loadMediaData
+                        )
+                        .forcedLeftToRight()
+                    } else {
+                        TranscriptMediaThumbnailView(
+                            reference: reference,
+                            loadMediaData: loadMediaData,
+                            onPreviewMedia: onPreviewMedia
+                        )
+                        // Pin the image container LTR so media keeps its leading-edge
+                        // anchor inside an RTL message (#259); the text segments above
+                        // still follow the chat direction.
+                        .forcedLeftToRight()
+                    }
                 }
             }
         }
@@ -53,7 +61,7 @@ struct TranscriptMediaContentView: View {
 
 private struct TranscriptMediaThumbnailView: View {
     let reference: TranscriptMediaReference
-    let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
 
     @State private var image: UIImage?
@@ -63,7 +71,7 @@ private struct TranscriptMediaThumbnailView: View {
     private let thumbnailHeight: CGFloat = 132
 
     var body: some View {
-        if reference.isRasterImageCandidate, let loadMediaImage {
+        if reference.isRasterImageCandidate, let loadMediaData {
             Button {
                 onPreviewMedia?(reference)
             } label: {
@@ -74,7 +82,7 @@ private struct TranscriptMediaThumbnailView: View {
             .task(id: reference.id) {
                 let loadedImage = await TranscriptMediaImageCache.shared.image(
                     for: reference,
-                    loadMediaImage: loadMediaImage
+                    loadMediaData: loadMediaData
                 )
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
@@ -110,6 +118,25 @@ private struct TranscriptMediaThumbnailView: View {
                     ProgressView()
                         .tint(Color(.tertiaryLabel))
                 }
+        }
+    }
+}
+
+private struct TranscriptMediaAudioView: View {
+    let reference: TranscriptMediaReference
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
+
+    var body: some View {
+        if let loadMediaData {
+            InlineAudioPlayerView(
+                title: reference.displayName,
+                load: {
+                    await loadMediaData(reference)
+                }
+            )
+            .frame(maxWidth: 300, alignment: .leading)
+        } else {
+            TranscriptMediaUnavailableChip(reference: reference)
         }
     }
 }
@@ -150,7 +177,9 @@ private struct TranscriptMediaUnavailableChip: View {
     }
 
     private var iconName: String {
-        reference.isRasterImageCandidate ? "photo" : "doc"
+        if reference.isRasterImageCandidate { return "photo" }
+        if reference.isAudioCandidate { return "waveform" }
+        return "doc"
     }
 }
 
@@ -162,7 +191,7 @@ private actor TranscriptMediaImageCache {
 
     func image(
         for reference: TranscriptMediaReference,
-        loadMediaImage: @escaping (TranscriptMediaReference) async -> Data?
+        loadMediaData: @escaping (TranscriptMediaReference) async -> Data?
     ) async -> UIImage? {
         let key = reference.id
         if let cached = cache[key] {
@@ -174,7 +203,7 @@ private actor TranscriptMediaImageCache {
         }
 
         let task = Task<UIImage?, Never> {
-            guard let data = await loadMediaImage(reference) else {
+            guard let data = await loadMediaData(reference) else {
                 return nil
             }
             return UIImage(data: data)

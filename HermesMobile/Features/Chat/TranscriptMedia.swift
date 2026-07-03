@@ -51,6 +51,10 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return false
     }
 
+    var isAudioCandidate: Bool {
+        Self.audioExtensions.contains(pathExtension)
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):
@@ -62,6 +66,10 @@ struct TranscriptMediaReference: Equatable, Identifiable {
 
     private static let rasterImageExtensions: Set<String> = [
         "bmp", "gif", "heic", "heif", "ico", "jpg", "jpeg", "png", "tif", "tiff", "webp"
+    ]
+
+    private static let audioExtensions: Set<String> = [
+        "aac", "caf", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav"
     ]
 }
 
