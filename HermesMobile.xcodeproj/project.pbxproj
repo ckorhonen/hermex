@@ -151,6 +151,8 @@
 		C09500000000000000000001 /* AdaptiveGlassModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09500000000000000000002 /* AdaptiveGlassModifier.swift */; };
 		C09500000000000000000003 /* AdaptiveGlassTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09500000000000000000004 /* AdaptiveGlassTests.swift */; };
 		C09500000000000000000005 /* AdaptiveGlassDebugFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09500000000000000000006 /* AdaptiveGlassDebugFixture.swift */; };
+		FEEDBA000000000000000001 /* ShakeToReportFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDBA000000000000000002 /* ShakeToReportFeedback.swift */; };
+		FEEDBA000000000000000004 /* FeedbackReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDBA000000000000000005 /* FeedbackReportTests.swift */; };
 		031031031031031031031001 /* MarkdownMathSegmenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031002 /* MarkdownMathSegmenter.swift */; };
 		031031031031031031031005 /* MarkdownMathFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031006 /* MarkdownMathFormatter.swift */; };
 		031031031031031031031007 /* MarkdownMathFormatter+Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031008 /* MarkdownMathFormatter+Support.swift */; };
@@ -461,6 +463,8 @@
 		C09500000000000000000002 /* AdaptiveGlassModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveGlassModifier.swift; sourceTree = "<group>"; };
 		C09500000000000000000004 /* AdaptiveGlassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveGlassTests.swift; sourceTree = "<group>"; };
 		C09500000000000000000006 /* AdaptiveGlassDebugFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveGlassDebugFixture.swift; sourceTree = "<group>"; };
+		FEEDBA000000000000000002 /* ShakeToReportFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShakeToReportFeedback.swift; sourceTree = "<group>"; };
+		FEEDBA000000000000000005 /* FeedbackReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackReportTests.swift; sourceTree = "<group>"; };
 		031031031031031031031002 /* MarkdownMathSegmenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathSegmenter.swift; sourceTree = "<group>"; };
 		031031031031031031031006 /* MarkdownMathFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathFormatter.swift; sourceTree = "<group>"; };
 		031031031031031031031008 /* MarkdownMathFormatter+Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MarkdownMathFormatter+Support.swift"; sourceTree = "<group>"; };
@@ -749,6 +753,7 @@
 				C08800000000000000000004 /* SessionHapticsTests.swift */,
 				C09300000000000000000004 /* HapticButtonTests.swift */,
 				C09500000000000000000004 /* AdaptiveGlassTests.swift */,
+				FEEDBA000000000000000005 /* FeedbackReportTests.swift */,
 				1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */,
 				1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */,
 				105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */,
@@ -840,6 +845,7 @@
 			children = (
 				1A2B3C4D5E6F7000000000C4 /* Onboarding */,
 				C09300000000000000000010 /* Shared */,
+				FEEDBA000000000000000003 /* Feedback */,
 				1A2B3C4D5E6F7000000000C5 /* SessionList */,
 				1A2B3C4D5E6F7000000000C6 /* Chat */,
 				1A2B3C4D5E6F7000000000C7 /* Workspace */,
@@ -878,6 +884,14 @@
 				C0FF000000000000000000B2 /* CustomHeadersEditor.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		FEEDBA000000000000000003 /* Feedback */ = {
+			isa = PBXGroup;
+			children = (
+				FEEDBA000000000000000002 /* ShakeToReportFeedback.swift */,
+			);
+			path = Feedback;
 			sourceTree = "<group>";
 		};
 		1A2B3C4D5E6F7000000000C5 /* SessionList */ = {
@@ -1389,6 +1403,7 @@
 				C0FF000000000000000000B1 /* CustomHeadersEditor.swift in Sources */,
 				C09500000000000000000001 /* AdaptiveGlassModifier.swift in Sources */,
 				C09500000000000000000005 /* AdaptiveGlassDebugFixture.swift in Sources */,
+				FEEDBA000000000000000001 /* ShakeToReportFeedback.swift in Sources */,
 					1A2B3C4D5E6F7000000000A7 /* SessionListView.swift in Sources */,
 					1A2B3C4D5E6F7000000000AF /* ChatView.swift in Sources */,
 					C05100000000000000000001 /* ChatTranscriptView.swift in Sources */,
@@ -1554,6 +1569,7 @@
 				C08800000000000000000003 /* SessionHapticsTests.swift in Sources */,
 				C09300000000000000000003 /* HapticButtonTests.swift in Sources */,
 				C09500000000000000000003 /* AdaptiveGlassTests.swift in Sources */,
+				FEEDBA000000000000000004 /* FeedbackReportTests.swift in Sources */,
 					1A2B3C4D5E6F70000000132 /* ContextWindowIndicatorTests.swift in Sources */,
 					1A2B3C4D5E6F70000000141 /* ModelFavoritesStoreTests.swift in Sources */,
 					105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */,

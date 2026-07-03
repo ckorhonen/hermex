@@ -1,0 +1,17 @@
+{
+  "name": "zora-feedback-inbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply zora_feedback_inbox --local",
+    "migrate:remote": "wrangler d1 migrations apply zora_feedback_inbox --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260701.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.61.1"
+  }
+}
