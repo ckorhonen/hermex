@@ -336,12 +336,8 @@ private struct FeedbackReportSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    colors: [Color(.systemBackground), Color(.secondarySystemBackground), Color(.systemBackground)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                ZoraBrandBackground()
+                    .ignoresSafeArea()
 
                 content
             }
@@ -350,15 +346,19 @@ private struct FeedbackReportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
                         .accessibilityIdentifier("feedback.report.closeButton")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Send") { submit() }
                         .disabled(!canSubmit)
+                        .foregroundStyle(canSubmit ? ZoraBrand.foreground : ZoraBrand.tertiaryForeground)
                         .accessibilityIdentifier("feedback.report.navigationSubmitButton")
                 }
             }
         }
+        .environment(\.colorScheme, .dark)
+        .tint(ZoraBrand.foreground)
         .accessibilityIdentifier("feedback.report.sheet")
     }
 
@@ -369,35 +369,39 @@ private struct FeedbackReportSheet: View {
             VStack(spacing: 18) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 52, weight: .semibold))
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(ZoraBrand.success)
                 Text("Report sent")
-                    .font(.system(size: 34, weight: .regular, design: .rounded))
+                    .font(AppFont.title(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.foreground)
                     .accessibilityIdentifier("feedback.report.successMessage")
                 Text("Thanks — the screenshot and notes were sent to the private Zora feedback queue.")
-                    .font(.callout)
+                    .font(AppFont.callout())
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
                     .frame(maxWidth: 320)
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ZoraPrimaryButtonStyle())
                     .accessibilityIdentifier("feedback.report.doneButton")
             }
-            .padding(28)
+            .padding(ZoraSpacing.section)
+            .zoraSurface(.card, cornerRadius: ZoraRadius.sheet, showsShadow: true)
+            .padding(.horizontal, ZoraSpacing.screenInset)
         default:
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Shake Report", systemImage: "iphone.radiowaves.left.and.right")
-                                .font(.caption.weight(.bold))
+                                .font(AppFont.caption(weight: .bold))
                                 .textCase(.uppercase)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(ZoraBrand.secondaryForeground)
                             Text("Mark the problem area and describe what happened.")
-                                .font(.title2.weight(.semibold))
+                                .font(AppFont.title2(weight: .semibold))
+                                .foregroundStyle(ZoraBrand.foreground)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("Screen: \(draft.screenName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.caption())
+                                .foregroundStyle(ZoraBrand.secondaryForeground)
                                 .accessibilityIdentifier("feedback.report.screenName")
                         }
 
@@ -409,30 +413,33 @@ private struct FeedbackReportSheet: View {
                             } label: {
                                 Label("Clear marks", systemImage: "eraser")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(ZoraSecondaryButtonStyle())
                             .disabled(annotations.isEmpty)
                             .accessibilityIdentifier("feedback.report.clearMarksButton")
 
                             Spacer(minLength: 0)
 
                             Text("\(annotations.count) \(annotations.count == 1 ? "mark" : "marks")")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.caption(weight: .semibold))
+                                .foregroundStyle(ZoraBrand.secondaryForeground)
                                 .accessibilityIdentifier("feedback.report.markCount")
                         }
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Notes")
-                                .font(.headline)
+                                .font(AppFont.headline())
+                                .foregroundStyle(ZoraBrand.foreground)
 
                             TextEditor(text: $message)
-                                .font(.body)
+                                .font(AppFont.body())
+                                .foregroundStyle(ZoraBrand.foreground)
+                                .scrollContentBackground(.hidden)
                                 .frame(minHeight: 138)
-                                .padding(12)
-                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .padding(ZoraSpacing.sm)
+                                .background(ZoraSurfaceLevel.strong.fill(reduceTransparency: false), in: RoundedRectangle(cornerRadius: ZoraRadius.card, style: .continuous))
                                 .overlay {
-                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                        .stroke(.primary.opacity(0.12), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: ZoraRadius.card, style: .continuous)
+                                        .stroke(ZoraBrand.surfaceHairlineStrong, lineWidth: 1)
                                 }
                                 .focused($isMessageFocused)
                                 .simultaneousGesture(
@@ -449,7 +456,10 @@ private struct FeedbackReportSheet: View {
                         if case let .failed(message) = status {
                             Text(message)
                                 .font(.callout.weight(.semibold))
-                                .foregroundStyle(.red)
+                                .foregroundStyle(ZoraBrand.ink)
+                                .padding(ZoraSpacing.sm)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(ZoraBrand.danger, in: RoundedRectangle(cornerRadius: ZoraRadius.small, style: .continuous))
                                 .accessibilityIdentifier("feedback.report.errorMessage")
                         }
 
@@ -466,13 +476,13 @@ private struct FeedbackReportSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(ZoraPrimaryButtonStyle())
                         .disabled(!canSubmit)
                         .accessibilityIdentifier("feedback.report.submitButton")
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 20)
-                    .padding(.bottom, 34)
+                    .padding(.horizontal, ZoraSpacing.screenInset)
+                    .padding(.top, ZoraSpacing.section)
+                    .padding(.bottom, ZoraSpacing.large)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: isMessageFocused) { _, focused in
@@ -606,6 +616,17 @@ private struct FeedbackScreenshotMarkupView: View {
             .shadow(color: .black.opacity(0.28), radius: 3, y: 1)
     }
 }
+
+#if DEBUG
+struct FeedbackReportSheetAuditView: View {
+    var body: some View {
+        FeedbackReportSheet(
+            draft: FeedbackDraft(screenName: "Zora design audit", screenshot: nil, capturedAt: Date()),
+            feedbackClient: .mockSuccess
+        )
+    }
+}
+#endif
 
 private extension UIUserInterfaceIdiom {
     var feedbackDescription: String {

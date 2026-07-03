@@ -17,6 +17,8 @@ struct HermesMobileApp: App {
                 NavigationStack {
                     StreamingLabView()
                 }
+            } else if arguments.contains("--zora-feedback-audit") {
+                FeedbackReportSheetAuditView()
             } else if arguments.contains("--zora-design-audit") {
                 ZoraDesignAuditView(screen: ZoraDesignAuditScreen.fromArguments(arguments))
                     .preferredColorScheme(.dark)
