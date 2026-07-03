@@ -1,0 +1,11 @@
+name = "zora-feedback-inbox"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+account_id = "ea76e5b24c115e61c4ca83acb28b7e4d"
+workers_dev = true
+preview_urls = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zora_feedback_inbox"
+database_id = "c9f5d8d2-6f13-40a7-881d-88de741ad299"

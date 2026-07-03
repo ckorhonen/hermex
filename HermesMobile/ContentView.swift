@@ -12,6 +12,7 @@ struct ContentView: View {
 
     var body: some View {
         content
+            .shakeToReportFeedback(screenName: feedbackScreenName)
             .onOpenURL(perform: handleOpenURL)
             .task {
                 guard !didCheckInitialPendingShare else { return }
@@ -71,6 +72,17 @@ struct ContentView: View {
             // Keying on the server tears the whole stack down and rebuilds it
             // against the newly active server (#17).
             .id(server)
+        }
+    }
+
+    private var feedbackScreenName: String {
+        switch authManager.state {
+        case .unconfigured:
+            return "Onboarding"
+        case .loggedOut:
+            return "Onboarding"
+        case .loggedIn:
+            return "SessionList"
         }
     }
 
