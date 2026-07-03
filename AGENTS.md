@@ -22,7 +22,10 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 - `master` is the protected release-candidate branch (the source for internal
   TestFlight builds): keep it buildable, never do feature work on it.
 - Pushing a branch, opening/updating a PR, or merging needs explicit human approval.
-  Triage bot/review comments before accepting them.
+  Default all GitHub work to the fork remote (`origin`, currently `ckorhonen/hermex`).
+  Never open an upstream PR, push to `upstream`, merge from/to `upstream`, or retarget a
+  PR at the upstream repository unless the human explicitly asks for upstream work in
+  that turn. Triage bot/review comments before accepting them.
 
 ## Hard rules
 1. **Never invent API endpoints or JSON shapes.** Read the pinned upstream copy at
