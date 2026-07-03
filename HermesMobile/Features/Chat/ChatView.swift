@@ -279,6 +279,9 @@ struct ChatView: View {
                     .environment(\.layoutDirection, chatLayoutDirection)
             }
 
+            ChatHeaderBackgroundGradient()
+                .zIndex(1)
+
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
             composerAccessoryStack
@@ -313,8 +316,8 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
-            .navigationTitle(displayTitle)
-            .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(displayTitle)
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
             if loadsInitialMessages {
@@ -1949,6 +1952,78 @@ struct ChatToolbarTitleLabel: View {
     private var accessibilityLabel: String {
         guard let subtitle else { return title }
         return "\(title), \(subtitle)"
+    }
+}
+
+struct ChatHeaderBackgroundGradient: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        GeometryReader { proxy in
+            let topSafeAreaInset = proxy.safeAreaInsets.top
+            let visibleHeight = ChatHeaderBackgroundGradientLayout.visibleHeight(
+                topSafeAreaInset: topSafeAreaInset
+            )
+            let solidStop = ChatHeaderBackgroundGradientLayout.solidStop(
+                topSafeAreaInset: topSafeAreaInset
+            )
+            let fadeKneeStop = ChatHeaderBackgroundGradientLayout.fadeKneeStop(
+                topSafeAreaInset: topSafeAreaInset
+            )
+
+            LinearGradient(
+                stops: [
+                    .init(color: gradientColor, location: 0),
+                    .init(color: gradientColor.opacity(0.98), location: solidStop),
+                    .init(color: gradientColor.opacity(fadeKneeOpacity), location: fadeKneeStop),
+                    .init(color: gradientColor.opacity(0), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: visibleHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var gradientColor: Color {
+        Color(.systemBackground)
+    }
+
+    private var fadeKneeOpacity: Double {
+        colorScheme == .dark ? 0.72 : 0.64
+    }
+}
+
+enum ChatHeaderBackgroundGradientLayout {
+    /// Inline navigation chrome plus the two-line principal title area.
+    static let inlineHeaderBarHeight: CGFloat = 56
+    /// Keep the fully opaque portion slightly below the toolbar so transcript text cannot
+    /// collide with the title/buttons before the fade begins.
+    static let solidExtensionBelowHeader: CGFloat = 14
+    /// Tail of the iMessage-style fade from the header into the transcript.
+    static let fadeTailHeight: CGFloat = 48
+    static let minimumVisibleHeight: CGFloat = 132
+
+    static func visibleHeight(topSafeAreaInset: CGFloat) -> CGFloat {
+        max(minimumVisibleHeight, solidHeight(topSafeAreaInset: topSafeAreaInset) + fadeTailHeight)
+    }
+
+    static func solidHeight(topSafeAreaInset: CGFloat) -> CGFloat {
+        max(0, topSafeAreaInset) + inlineHeaderBarHeight + solidExtensionBelowHeader
+    }
+
+    static func solidStop(topSafeAreaInset: CGFloat) -> CGFloat {
+        solidHeight(topSafeAreaInset: topSafeAreaInset) / visibleHeight(topSafeAreaInset: topSafeAreaInset)
+    }
+
+    static func fadeKneeStop(topSafeAreaInset: CGFloat) -> CGFloat {
+        let solidStop = solidStop(topSafeAreaInset: topSafeAreaInset)
+        return solidStop + ((1 - solidStop) * 0.46)
     }
 }
 

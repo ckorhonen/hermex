@@ -688,6 +688,61 @@ struct AvatarServerSwitcherMenu: View {
     }
 }
 
+struct SessionIdentityAvatarBadge: View {
+    let style: SessionAvatarStyle
+    let initials: String
+    let color: Color
+    let foregroundColor: Color
+    let size: CGFloat
+
+    private var displayInitials: String {
+        let trimmed = initials.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "UZ" : trimmed
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color)
+
+            glyph
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        switch style {
+        case .initials:
+            Text(displayInitials)
+                .font(.system(size: size * 0.34, weight: .semibold, design: .rounded))
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(foregroundColor)
+        case .zora:
+            Text("Z")
+                .font(.system(size: size * 0.50, weight: .semibold, design: .rounded))
+                .foregroundStyle(foregroundColor)
+        case .orbital:
+            ZStack {
+                Circle()
+                    .stroke(foregroundColor.opacity(0.34), lineWidth: Swift.max(1, size * 0.045))
+                    .frame(width: size * 0.64, height: size * 0.64)
+
+                Circle()
+                    .fill(foregroundColor)
+                    .frame(width: Swift.max(3, size * 0.12), height: Swift.max(3, size * 0.12))
+                    .offset(x: size * 0.23, y: -size * 0.18)
+
+                Text(String(displayInitials.prefix(1)))
+                    .font(.system(size: size * 0.31, weight: .bold, design: .rounded))
+                    .foregroundStyle(foregroundColor)
+            }
+        }
+    }
+}
+
 extension View {
     func sessionsScreenListRow(insets: EdgeInsets = EdgeInsets()) -> some View {
         listRowInsets(insets)

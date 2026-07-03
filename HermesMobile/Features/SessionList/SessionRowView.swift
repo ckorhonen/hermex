@@ -391,6 +391,32 @@ enum SessionSidebarDisclosureSettings {
     }
 }
 
+enum SessionAvatarStyle: String, CaseIterable, Identifiable {
+    case initials
+    case zora
+    case orbital
+
+    static let storageKey = "sessionIdentity.avatarStyle"
+    static let defaultValue: SessionAvatarStyle = .initials
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .initials:
+            String(localized: "Initials")
+        case .zora:
+            String(localized: "Zora")
+        case .orbital:
+            String(localized: "Orbital")
+        }
+    }
+
+    static func storedValue(_ rawValue: String) -> SessionAvatarStyle {
+        SessionAvatarStyle(rawValue: rawValue) ?? defaultValue
+    }
+}
+
 enum SessionIdentitySettings {
     static let displayNameKey = "sessionIdentity.displayName"
     static let initialsKey = "sessionIdentity.initials"

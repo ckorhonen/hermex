@@ -48,6 +48,7 @@ struct SessionListView: View {
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
+    @AppStorage(SessionAvatarStyle.storageKey) private var avatarStyleRawValue = SessionAvatarStyle.defaultValue.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     init(
@@ -402,12 +403,13 @@ struct SessionListView: View {
             }
         } label: {
             ZStack {
-                Text(settingsInitials)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(initialsAvatarForegroundColor)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .background(selectedHeaderLogoColor, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                SessionIdentityAvatarBadge(
+                    style: selectedSessionAvatarStyle,
+                    initials: settingsInitials,
+                    color: selectedHeaderLogoColor,
+                    foregroundColor: initialsAvatarForegroundColor,
+                    size: Self.searchChromeIconVisualSize
+                )
                     .opacity(searchChromeIsExpanded ? 0 : 1)
                     .scaleEffect(searchChromeIsExpanded ? 0.72 : 1)
                     .rotationEffect(.degrees(searchChromeIsExpanded ? -18 : 0))
@@ -543,6 +545,10 @@ struct SessionListView: View {
 
     private var selectedHeaderLogoColor: Color {
         HeaderLogoColor.color(for: headerLogoColorHex)
+    }
+
+    private var selectedSessionAvatarStyle: SessionAvatarStyle {
+        SessionAvatarStyle.storedValue(avatarStyleRawValue)
     }
 
     private var newSessionButtonUsesThemeColor: Bool {

@@ -44,7 +44,8 @@ struct TasksView: View {
                     draft: CronJobEditorDraft(),
                     saveTitle: String(localized: "Create"),
                     isSaving: viewModel.isMutating,
-                    errorMessage: viewModel.actionErrorMessage
+                    errorMessage: viewModel.actionErrorMessage,
+                    showsDescriptorDraftFlow: true
                 ) { draft in
                     let didCreate = await viewModel.create(from: draft)
                     if let lastError = viewModel.lastError {
@@ -235,9 +236,12 @@ struct CronJobEditorSheet: View {
     let saveTitle: String
     let isSaving: Bool
     let errorMessage: String?
+    let showsDescriptorDraftFlow: Bool
     let onSave: (CronJobEditorDraft) async -> Bool
 
     @State private var draft: CronJobEditorDraft
+    @State private var descriptor = ""
+    @State private var descriptorSummary: String?
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -246,12 +250,14 @@ struct CronJobEditorSheet: View {
         saveTitle: String,
         isSaving: Bool,
         errorMessage: String?,
+        showsDescriptorDraftFlow: Bool = false,
         onSave: @escaping (CronJobEditorDraft) async -> Bool
     ) {
         self.title = title
         self.saveTitle = saveTitle
         self.isSaving = isSaving
         self.errorMessage = errorMessage
+        self.showsDescriptorDraftFlow = showsDescriptorDraftFlow
         self.onSave = onSave
         _draft = State(initialValue: draft)
     }
@@ -259,6 +265,34 @@ struct CronJobEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if showsDescriptorDraftFlow {
+                    Section("Describe It") {
+                        TextField(
+                            "e.g. Every weekday morning, summarize calendar and inbox",
+                            text: $descriptor,
+                            axis: .vertical
+                        )
+                        .lineLimit(2...5)
+                        .textInputAutocapitalization(.sentences)
+
+                        Button {
+                            let suggestion = CronJobDraftSuggester.suggest(from: descriptor)
+                            descriptor = suggestion.descriptor
+                            descriptorSummary = suggestion.summary
+                            draft = suggestion.draft
+                        } label: {
+                            Label("Suggest Values", systemImage: "sparkles")
+                        }
+                        .disabled(isSaving || descriptor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        if let descriptorSummary {
+                            Text(descriptorSummary)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Section("Task") {
                     TextField("Name", text: $draft.name)
 

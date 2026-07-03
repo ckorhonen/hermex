@@ -212,6 +212,20 @@ final class ContractReadinessTests: XCTestCase {
                 path: "/api/crons/output",
                 query: ["job_id": "job-123", "limit": "5"]
             ),
+            .init(
+                name: "cron recent",
+                method: "GET",
+                endpoint: .cronRecent(since: 1_777_892_400),
+                path: "/api/crons/recent",
+                query: ["since": "1777892400.0"]
+            ),
+            .init(
+                name: "cron history",
+                method: "GET",
+                endpoint: .cronHistory(jobID: "job-123", limit: 5),
+                path: "/api/crons/history",
+                query: ["job_id": "job-123", "limit": "5"]
+            ),
             .init(name: "memory", method: "GET", endpoint: .memory, path: "/api/memory"),
             .init(name: "memory write", method: "POST", endpoint: .memoryWrite, path: "/api/memory/write"),
             .init(name: "skills", method: "GET", endpoint: .skills, path: "/api/skills"),

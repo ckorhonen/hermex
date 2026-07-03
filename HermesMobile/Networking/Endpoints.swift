@@ -86,6 +86,8 @@ enum Endpoint {
     case cronResume
     case cronStatus(jobID: String?)
     case cronOutput(jobID: String, limit: Int?)
+    case cronRecent(since: Double)
+    case cronHistory(jobID: String, limit: Int?)
     case memory
     case memoryWrite
     case skills
@@ -265,6 +267,10 @@ enum Endpoint {
             return "/api/crons/status"
         case .cronOutput:
             return "/api/crons/output"
+        case .cronRecent:
+            return "/api/crons/recent"
+        case .cronHistory:
+            return "/api/crons/history"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -356,6 +362,14 @@ enum Endpoint {
             guard let jobID else { return [] }
             return [URLQueryItem(name: "job_id", value: jobID)]
         case let .cronOutput(jobID, limit):
+            var items = [URLQueryItem(name: "job_id", value: jobID)]
+            if let limit {
+                items.append(URLQueryItem(name: "limit", value: "\(limit)"))
+            }
+            return items
+        case let .cronRecent(since):
+            return [URLQueryItem(name: "since", value: "\(since)")]
+        case let .cronHistory(jobID, limit):
             var items = [URLQueryItem(name: "job_id", value: jobID)]
             if let limit {
                 items.append(URLQueryItem(name: "limit", value: "\(limit)"))

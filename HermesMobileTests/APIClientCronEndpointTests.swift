@@ -318,4 +318,117 @@ final class APIClientCronEndpointTests: APIClientTestCase {
         let response = try await client.cronOutput(jobID: "job456", limit: nil)
         XCTAssertEqual(response.outputs?.count, 0)
     }
+
+    func testCronRecentBuildsExpectedQueryAndDecodesRelatedSessionInfo() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/recent")
+            XCTAssertEqual(request.httpMethod, "GET")
+
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+            XCTAssertEqual(query["since"], "0.0")
+
+            return apiTestJSONResponse("""
+            {
+              "since": 0,
+              "completions": [
+                {
+                  "job_id": "job123",
+                  "name": "Morning digest",
+                  "status": "ok",
+                  "completed_at": 1777892400,
+                  "toast_notifications": true,
+                  "session_id": "cron_job123_20260504_100000",
+                  "message_count": "4"
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        let response = try await client.cronRecent(since: 0)
+        let completion = try XCTUnwrap(response.completions?.first)
+
+        XCTAssertEqual(response.since, 0)
+        XCTAssertEqual(completion.jobId, "job123")
+        XCTAssertEqual(completion.relatedSession?.sessionId, "cron_job123_20260504_100000")
+        XCTAssertEqual(completion.relatedSession?.messageCount, 4)
+    }
+
+    func testCronHistoryBuildsExpectedQueryAndDecodesRunMetadata() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/history")
+            XCTAssertEqual(request.httpMethod, "GET")
+
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+            XCTAssertEqual(query["job_id"], "job123")
+            XCTAssertEqual(query["limit"], "5")
+
+            return apiTestJSONResponse("""
+            {
+              "job_id": "job123",
+              "total": 1,
+              "offset": 0,
+              "runs": [
+                {
+                  "filename": "2026-05-04_10-00-00.md",
+                  "size": "2048",
+                  "modified": 1777892400,
+                  "usage": {
+                    "input_tokens": "1200",
+                    "output_tokens": 300,
+                    "total_tokens": "1500",
+                    "estimated_cost_usd": "0.0123",
+                    "duration_seconds": "8.5",
+                    "provider": "openai",
+                    "model": "gpt-5.5"
+                  }
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        let response = try await client.cronHistory(jobID: "job123", limit: 5)
+        let run = try XCTUnwrap(response.runs?.first)
+
+        XCTAssertEqual(response.jobId, "job123")
+        XCTAssertEqual(response.total, 1)
+        XCTAssertEqual(run.filename, "2026-05-04_10-00-00.md")
+        XCTAssertEqual(run.size, 2048)
+        XCTAssertEqual(try XCTUnwrap(run.modified), 1_777_892_400, accuracy: 0.1)
+        XCTAssertEqual(run.usage?.inputTokens, 1_200)
+        XCTAssertEqual(run.usage?.outputTokens, 300)
+        XCTAssertEqual(run.usage?.totalTokens, 1_500)
+        XCTAssertEqual(run.usage?.estimatedCostUSD, 0.0123)
+        XCTAssertEqual(run.usage?.durationSeconds, 8.5)
+        XCTAssertEqual(run.usage?.provider, "openai")
+        XCTAssertEqual(run.usage?.model, "gpt-5.5")
+    }
+
+    func testCronHistoryOmitsLimitWhenNil() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/history")
+
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+            XCTAssertEqual(query["job_id"], "job456")
+            XCTAssertNil(query["limit"])
+
+            return apiTestJSONResponse("""
+            {
+              "job_id": "job456",
+              "runs": [],
+              "total": 0,
+              "offset": 0
+            }
+            """, for: request)
+        }
+
+        let response = try await client.cronHistory(jobID: "job456", limit: nil)
+
+        XCTAssertEqual(response.runs?.count, 0)
+        XCTAssertEqual(response.total, 0)
+    }
 }

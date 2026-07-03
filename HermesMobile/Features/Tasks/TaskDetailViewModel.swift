@@ -8,6 +8,8 @@ final class TaskDetailViewModel {
     private(set) var runningElapsed: Double?
 
     private(set) var outputs: [CronOutputItem] = []
+    private(set) var runs: [CronRunHistoryItem] = []
+    private(set) var relatedSession: CronRelatedSession?
     private(set) var isLoading = false
     private(set) var isMutating = false
     private(set) var errorMessage: String?
@@ -20,6 +22,7 @@ final class TaskDetailViewModel {
     init(job: CronJob, runningElapsed: Double?, server: URL, client: APIClient? = nil) {
         self.job = job
         self.runningElapsed = runningElapsed
+        relatedSession = job.relatedSession
         self.client = client ?? APIClient(baseURL: server)
     }
 
@@ -40,6 +43,23 @@ final class TaskDetailViewModel {
         } catch {
             lastError = error
             errorMessage = error.localizedDescription
+        }
+
+        do {
+            let response = try await client.cronHistory(jobID: jobID, limit: 5)
+            runs = response.runs ?? []
+        } catch {
+            runs = []
+        }
+
+        do {
+            let response = try await client.cronRecent(since: 0)
+            if let related = Self.latestRelatedSession(from: response, jobID: jobID) {
+                relatedSession = related
+            }
+        } catch {
+            // Older servers may not expose /api/crons/recent; the direct job payload
+            // and run output remain useful, so related-chat lookup is best-effort.
         }
     }
 
@@ -145,6 +165,9 @@ final class TaskDetailViewModel {
 
             if let updatedJob = response.job {
                 job = updatedJob
+                if let updatedRelatedSession = updatedJob.relatedSession {
+                    relatedSession = updatedRelatedSession
+                }
                 lastMutation = .upsert(updatedJob)
             }
             return true
@@ -153,5 +176,14 @@ final class TaskDetailViewModel {
             actionErrorMessage = error.localizedDescription
             return false
         }
+    }
+
+    private static func latestRelatedSession(from response: CronRecentResponse, jobID: String) -> CronRelatedSession? {
+        response.completions?
+            .filter { $0.jobId == jobID && $0.relatedSession != nil }
+            .max { lhs, rhs in
+                (lhs.completedAt ?? -Double.infinity) < (rhs.completedAt ?? -Double.infinity)
+            }?
+            .relatedSession
     }
 }

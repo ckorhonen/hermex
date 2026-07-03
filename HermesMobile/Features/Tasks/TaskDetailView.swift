@@ -30,6 +30,14 @@ struct TaskDetailView: View {
                 actionStatusSection
                 metadataSection
 
+                if let relatedSession = viewModel.relatedSession {
+                    relatedSessionSection(relatedSession)
+                }
+
+                if !viewModel.runs.isEmpty {
+                    runHistorySection
+                }
+
                 if viewModel.isLoading && viewModel.outputs.isEmpty {
                     ProgressView("Loading output...")
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -228,6 +236,95 @@ struct TaskDetailView: View {
             }
         }
         .font(.footnote)
+    }
+
+    private func relatedSessionSection(_ relatedSession: CronRelatedSession) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Related Chat")
+                .font(.headline)
+
+            NavigationLink {
+                ChatView(
+                    session: relatedSession.sessionSummary(profile: viewModel.job.profile),
+                    server: server,
+                    onAPIError: onAPIError
+                )
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .foregroundStyle(.blue)
+                        .frame(width: 28, height: 28)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(relatedSession.displayTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+
+                        if let messageCount = relatedSession.messageCount {
+                            Text("\(messageCount) messages")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Open the chat created by the latest task run")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(12)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var runHistorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recent Runs")
+                .font(.headline)
+
+            ForEach(Array(viewModel.runs.enumerated()), id: \.offset) { _, run in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(run.filename ?? String(localized: "Untitled run"))
+                        .font(.subheadline.weight(.semibold))
+
+                    if let modified = run.modified {
+                        CronJobMetadataRow(
+                            title: String(localized: "Modified"),
+                            value: Date(timeIntervalSince1970: modified).formatted(date: .abbreviated, time: .shortened)
+                        )
+                    }
+
+                    if let size = run.size {
+                        CronJobMetadataRow(title: String(localized: "Size"), value: ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                    }
+
+                    if let usage = run.usage {
+                        if let totalTokens = usage.totalTokens {
+                            CronJobMetadataRow(title: String(localized: "Tokens"), value: "\(totalTokens)")
+                        }
+
+                        if let model = usage.model, !model.isEmpty {
+                            CronJobMetadataRow(title: String(localized: "Model"), value: model)
+                        }
+
+                        if let cost = usage.estimatedCostUSD {
+                            CronJobMetadataRow(title: String(localized: "Cost"), value: cost.formatted(.currency(code: "USD")))
+                        }
+                    }
+                }
+                .font(.footnote)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
     }
 
     @ViewBuilder

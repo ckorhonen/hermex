@@ -69,6 +69,7 @@ struct SettingsView: View {
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
+    @AppStorage(SessionAvatarStyle.storageKey) private var avatarStyleRawValue = SessionAvatarStyle.defaultValue.rawValue
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -80,7 +81,9 @@ struct SettingsView: View {
                     SessionIdentitySettingsEditor(
                         displayName: $identityDisplayName,
                         initials: identityInitialsBinding,
+                        avatarStyleRawValue: $avatarStyleRawValue,
                         previewInitials: identityPreviewInitials,
+                        previewStyle: SessionAvatarStyle.storedValue(avatarStyleRawValue),
                         previewColor: HeaderLogoColor.color(for: headerLogoColorHex),
                         previewForeground: HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
                     )
@@ -1149,20 +1152,22 @@ private struct SessionIdentitySettingsEditor: View {
 
     @Binding var displayName: String
     @Binding var initials: String
+    @Binding var avatarStyleRawValue: String
     let previewInitials: String
+    let previewStyle: SessionAvatarStyle
     let previewColor: Color
     let previewForeground: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Text(previewInitials)
-                    .font(AppFont.caption(weight: .semibold))
-                    .foregroundStyle(previewForeground)
-                    .frame(width: avatarPreviewSize, height: avatarPreviewSize)
-                    .background(previewColor, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-                    .accessibilityHidden(true)
+                SessionIdentityAvatarBadge(
+                    style: previewStyle,
+                    initials: previewInitials,
+                    color: previewColor,
+                    foregroundColor: previewForeground,
+                    size: avatarPreviewSize
+                )
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Sessions Avatar")
@@ -1173,6 +1178,18 @@ private struct SessionIdentitySettingsEditor: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            SettingsPickerRow(
+                title: String(localized: "Avatar Style"),
+                systemImage: "person.crop.circle",
+                selection: $avatarStyleRawValue
+            ) {
+                ForEach(SessionAvatarStyle.allCases) { style in
+                    Text(style.title).tag(style.rawValue)
+                }
+            }
+
+            SettingsDivider()
 
             SettingsTextFieldRow(title: String(localized: "Display Name"), text: $displayName, placeholder: NSFullUserName())
 

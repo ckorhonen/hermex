@@ -92,6 +92,22 @@ final class AppThemeTests: XCTestCase {
         XCTAssertEqual(SessionIdentitySettings.normalizedInitials(" u-z!9 "), "UZ9")
         XCTAssertEqual(SessionIdentitySettings.normalizedInitials("abcd"), "ABC")
     }
+
+    func testSessionAvatarStyleStorageKeyAndFallbackAreStable() {
+        XCTAssertEqual(SessionAvatarStyle.storageKey, "sessionIdentity.avatarStyle")
+        XCTAssertEqual(SessionAvatarStyle.defaultValue, .initials)
+        XCTAssertEqual(SessionAvatarStyle.storedValue("zora"), .zora)
+        XCTAssertEqual(SessionAvatarStyle.storedValue("orbital"), .orbital)
+        XCTAssertEqual(SessionAvatarStyle.storedValue("unknown"), .initials)
+        XCTAssertEqual(SessionAvatarStyle.storedValue(""), .initials)
+    }
+
+    func testSessionAvatarStyleDisplayOrderAndTitles() {
+        XCTAssertEqual(SessionAvatarStyle.allCases, [.initials, .zora, .orbital])
+        XCTAssertEqual(SessionAvatarStyle.initials.title, "Initials")
+        XCTAssertEqual(SessionAvatarStyle.zora.title, "Zora")
+        XCTAssertEqual(SessionAvatarStyle.orbital.title, "Orbital")
+    }
 }
 
 final class PrimaryActionTintSettingsTests: XCTestCase {
