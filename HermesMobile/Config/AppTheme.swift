@@ -74,7 +74,7 @@ enum ZoraBrand {
     static let cardFill = paper.opacity(0.11)
     static let cardFillStrong = paper.opacity(0.16)
     static let cardStroke = whisper
-    static let subtleFill = paper.opacity(0.09)
+    static let subtleFill = paper.opacity(0.06)
     static let hairline = whisper
 
     // Warm semantic surfaces for the Zora-branded app shell. These replace the
@@ -84,10 +84,10 @@ enum ZoraBrand {
     static let surfaceHairlineStrong = paper.opacity(0.30)
     static let listDivider = paper.opacity(0.16)
     static let listDividerStrong = paper.opacity(0.24)
-    static let chatBubbleFill = Color(red: 96.0 / 255.0, green: 27.0 / 255.0, blue: 12.0 / 255.0).opacity(0.82)
+    static let chatBubbleFill = Color(red: 120.0 / 255.0, green: 38.0 / 255.0, blue: 18.0 / 255.0).opacity(0.55)
     static let chatBubbleStroke = paper.opacity(0.24)
-    static let inlineCodeFill = Color(red: 86.0 / 255.0, green: 24.0 / 255.0, blue: 10.0 / 255.0).opacity(0.72)
-    static let codeBlockFill = Color(red: 75.0 / 255.0, green: 21.0 / 255.0, blue: 9.0 / 255.0).opacity(0.84)
+    static let inlineCodeFill = Color(red: 110.0 / 255.0, green: 34.0 / 255.0, blue: 16.0 / 255.0).opacity(0.48)
+    static let codeBlockFill = Color(red: 100.0 / 255.0, green: 32.0 / 255.0, blue: 14.0 / 255.0).opacity(0.52)
     static let codeBlockStroke = paper.opacity(0.22)
     static let accessoryFill = paper.opacity(0.10)
     static let accessoryFillInset = paper.opacity(0.07)
