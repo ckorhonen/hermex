@@ -135,13 +135,66 @@ final class CronManagementModelTests: XCTestCase {
             }
             """.utf8)
         )
-
         let run = try XCTUnwrap(response.runs?.first)
         XCTAssertEqual(run.id, "run-1777892400.0-42")
         XCTAssertEqual(run.id, run.id)
     }
 
+    func testCronRunHistoryItemDisplayTitleUsesFilenameOrFallback() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let response = try decoder.decode(
+            CronRunHistoryResponse.self,
+            from: Data("""
+            {
+              "runs": [
+                {"filename": " latest.md ", "modified": 1777892400},
+                {"filename": "   ", "modified": 1777892500}
+              ]
+            }
+            """.utf8)
+        )
+
+        let runs = try XCTUnwrap(response.runs)
+        XCTAssertEqual(runs[0].displayTitle, "latest.md")
+        XCTAssertEqual(runs[1].displayTitle, "Untitled run")
+    }
+
+    func testCronOutputItemsMatchRunHistoryByTrimmedFilename() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let history = try decoder.decode(
+            CronRunHistoryResponse.self,
+            from: Data("""
+            {
+              "runs": [
+                {"filename": " latest.md ", "size": 42, "modified": 1777892400},
+                {"filename": "other.md", "size": 12, "modified": 1777892300}
+              ]
+            }
+            """.utf8)
+        )
+        let output = try decoder.decode(
+            CronOutputResponse.self,
+            from: Data("""
+            {
+              "outputs": [
+                {"filename": "latest.md", "content": "## Response\\n\\nDone"}
+              ]
+            }
+            """.utf8)
+        )
+
+        let runs = try XCTUnwrap(history.runs)
+        let outputs = try XCTUnwrap(output.outputs)
+        XCTAssertEqual(outputs.output(matching: runs[0])?.content, "## Response\n\nDone")
+        XCTAssertNil(outputs.output(matching: runs[1]))
+    }
+
     func testCronJobDraftSuggesterBuildsWeekdayMorningDraftFromDescriptor() {
+
         let suggestion = CronJobDraftSuggester.suggest(
             from: "Summarize overnight workspace activity every weekday at 7:30am"
         )
@@ -350,6 +403,66 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.relatedSession?.displayTitle, "Morning digest")
         XCTAssertEqual(viewModel.relatedSession?.messageCount, 6)
         XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testCronRunListItemsPairHistoryRowsWithOutputAndAppendOutputOnlyRows() async throws {
+        var requestedPaths: [String] = []
+        let client = makeClient { request in
+            let path = try XCTUnwrap(request.url?.path)
+            requestedPaths.append(path)
+
+            switch path {
+            case "/api/crons/output":
+                return apiTestJSONResponse("""
+                {
+                  "job_id": "job123",
+                  "outputs": [
+                    {"filename": "latest.md", "content": "Latest output"},
+                    {"filename": "orphan.md", "content": "Output without history"}
+                  ]
+                }
+                """, for: request)
+            case "/api/crons/history":
+                return apiTestJSONResponse("""
+                {
+                  "job_id": "job123",
+                  "runs": [
+                    {"filename": "latest.md", "size": 42, "modified": 1777892400}
+                  ]
+                }
+                """, for: request)
+            case "/api/crons/recent":
+                return apiTestJSONResponse(#"{"since":0,"completions":[]}"#, for: request)
+            default:
+                XCTFail("Unexpected request: \(path)")
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 500,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (response, Data(#"{"error":"unexpected"}"#.utf8))
+            }
+        }
+        let viewModel = TaskDetailViewModel(
+            job: try decodeCronJob(#"{"id": "job123", "name": "Digest"}"#),
+            runningElapsed: nil,
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(requestedPaths, ["/api/crons/output", "/api/crons/history", "/api/crons/recent"])
+        XCTAssertEqual(viewModel.recentRunItems.map(\.filename), ["latest.md", "orphan.md"])
+        XCTAssertEqual(viewModel.recentRunItems.map(\.id), ["run-0-latest.md", "output-1-orphan.md"])
+        XCTAssertEqual(viewModel.recentRunItems[0].outputContent, "Latest output")
+        XCTAssertEqual(viewModel.recentRunItems[0].size, 42)
+        XCTAssertEqual(viewModel.recentRunItems[0].modified, 1_777_892_400)
+        XCTAssertEqual(viewModel.recentRunItems[1].outputContent, "Output without history")
+        XCTAssertNil(viewModel.recentRunItems[1].size)
+        XCTAssertNil(viewModel.recentRunItems[1].modified)
     }
 
     @MainActor

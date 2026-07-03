@@ -19,6 +19,10 @@ final class TaskDetailViewModel {
 
     private let client: APIClient
 
+    var recentRunItems: [CronRunListItem] {
+        CronRunListItem.items(runs: runs, outputs: outputs)
+    }
+
     init(job: CronJob, runningElapsed: Double?, server: URL, client: APIClient? = nil) {
         self.job = job
         self.runningElapsed = runningElapsed

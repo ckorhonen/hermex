@@ -34,17 +34,15 @@ struct TaskDetailView: View {
                     relatedSessionSection(relatedSession)
                 }
 
-                if !viewModel.runs.isEmpty {
-                    runHistorySection
-                }
-
-                if viewModel.isLoading && viewModel.outputs.isEmpty {
-                    ProgressView("Loading output...")
+                if hasRecentRunContent {
+                    recentRunsSection
+                } else if viewModel.isLoading {
+                    ProgressView("Loading runs...")
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 24)
-                } else if let errorMessage = viewModel.errorMessage, viewModel.outputs.isEmpty {
+                } else if let errorMessage = viewModel.errorMessage {
                     ContentUnavailableView {
-                        Label("Could Not Load Output", systemImage: "exclamationmark.triangle")
+                        Label("Could Not Load Runs", systemImage: "exclamationmark.triangle")
                     } description: {
                         Text(errorMessage)
                     } actions: {
@@ -53,15 +51,13 @@ struct TaskDetailView: View {
                         }
                     }
                     .padding(.top, 24)
-                } else if viewModel.outputs.isEmpty {
+                } else {
                     ContentUnavailableView {
-                        Label("No Recent Output", systemImage: "doc.text")
+                        Label("No Recent Runs", systemImage: "doc.text")
                     } description: {
                         Text("This task has not produced any output yet.")
                     }
                     .padding(.top, 24)
-                } else {
-                    outputsSection
                 }
             }
             .padding()
@@ -290,85 +286,18 @@ struct TaskDetailView: View {
         }
     }
 
-    private var runHistorySection: some View {
+    private var recentRunsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Recent Runs")
                 .font(.headline)
 
-            ForEach(Array(viewModel.runs.enumerated()), id: \.offset) { _, run in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(run.filename ?? String(localized: "Untitled run"))
-                        .font(.subheadline.weight(.semibold))
-
-                    if let modified = run.modified {
-                        CronJobMetadataRow(
-                            title: String(localized: "Modified"),
-                            value: Date(timeIntervalSince1970: modified).formatted(date: .abbreviated, time: .shortened)
-                        )
-                    }
-
-                    if let size = run.size {
-                        CronJobMetadataRow(title: String(localized: "Size"), value: ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                    }
-
-                    if let usage = run.usage {
-                        if let totalTokens = usage.totalTokens {
-                            CronJobMetadataRow(title: String(localized: "Tokens"), value: "\(totalTokens)")
-                        }
-
-                        if let model = usage.model, !model.isEmpty {
-                            CronJobMetadataRow(title: String(localized: "Model"), value: model)
-                        }
-
-                        if let cost = usage.estimatedCostUSD {
-                            CronJobMetadataRow(title: String(localized: "Cost"), value: cost.formatted(.currency(code: "USD")))
-                        }
-                    }
+            ForEach(viewModel.recentRunItems) { item in
+                NavigationLink {
+                    CronRunOutputDetailView(item: item)
+                } label: {
+                    CronRunListRow(item: item)
                 }
-                .font(.footnote)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.75)
-                        .allowsHitTesting(false)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var outputsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Recent Output")
-                .font(.headline)
-
-            ForEach(viewModel.outputs) { output in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(output.filename ?? String(localized: "Untitled"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    if let content = output.content, !content.isEmpty {
-                        Text(content)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .padding(12)
-                            .background(ZoraBrand.codeBlockFill)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(ZoraBrand.codeBlockStroke, lineWidth: 0.75)
-                                    .allowsHitTesting(false)
-                            }
-                    } else {
-                        Text("Empty output")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 8)
+                .buttonStyle(.plain)
             }
         }
     }
@@ -388,6 +317,10 @@ struct TaskDetailView: View {
         case .needsAttention:
             return .yellow
         }
+    }
+
+    private var hasRecentRunContent: Bool {
+        !viewModel.recentRunItems.isEmpty
     }
 
     private var isActionDisabled: Bool {
@@ -458,5 +391,150 @@ struct TaskDetailView: View {
         }
 
         onMutation(mutation)
+    }
+}
+
+private struct CronRunListRow: View {
+    let item: CronRunListItem
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: item.hasOutputContent ? "doc.text.fill" : "doc.text")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
+
+            Text(item.displayTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.75)
+                .allowsHitTesting(false)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.displayTitle)
+        .accessibilityHint("Opens run output.")
+    }
+}
+
+private struct CronRunOutputDetailView: View {
+    let item: CronRunListItem
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                metadataSection
+                outputSection
+            }
+            .padding()
+        }
+        .navigationTitle(item.displayTitle)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var metadataSection: some View {
+        let hasMetadata = item.modified != nil || item.size != nil || item.usage != nil
+
+        if hasMetadata {
+            VStack(alignment: .leading, spacing: 6) {
+                if let modified = item.modified {
+                    CronJobMetadataRow(
+                        title: String(localized: "Modified"),
+                        value: Date(timeIntervalSince1970: modified).formatted(date: .abbreviated, time: .shortened)
+                    )
+                }
+
+                if let size = item.size {
+                    CronJobMetadataRow(
+                        title: String(localized: "Size"),
+                        value: ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+                    )
+                }
+
+                if let usage = item.usage {
+                    if let duration = usage.durationSeconds {
+                        CronJobMetadataRow(title: String(localized: "Duration"), value: durationText(duration))
+                    }
+
+                    if let totalTokens = usage.totalTokens {
+                        CronJobMetadataRow(title: String(localized: "Tokens"), value: "\(totalTokens)")
+                    }
+
+                    if let model = nonEmpty(usage.model) {
+                        CronJobMetadataRow(title: String(localized: "Model"), value: model)
+                    }
+
+                    if let provider = nonEmpty(usage.provider) {
+                        CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
+                    }
+
+                    if let cost = usage.estimatedCostUSD {
+                        CronJobMetadataRow(title: String(localized: "Cost"), value: cost.formatted(.currency(code: "USD")))
+                    }
+                }
+            }
+            .font(.footnote)
+        }
+    }
+
+    @ViewBuilder
+    private var outputSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Output")
+                .font(.headline)
+
+            if let content = nonEmpty(item.outputContent) {
+                Text(content)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(ZoraBrand.codeBlockFill)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(ZoraBrand.codeBlockStroke, lineWidth: 0.75)
+                            .allowsHitTesting(false)
+                    }
+            } else {
+                ContentUnavailableView {
+                    Label("No Output", systemImage: "doc.text")
+                } description: {
+                    Text("No output content was returned for this run.")
+                }
+            }
+        }
+    }
+
+    private func durationText(_ duration: Double) -> String {
+        if duration < 60 {
+            return "\(Int(duration.rounded()))s"
+        }
+
+        let minutes = Int(duration / 60)
+        let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
+        return "\(minutes)m \(seconds)s"
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
