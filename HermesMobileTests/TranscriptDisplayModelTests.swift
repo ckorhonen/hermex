@@ -504,3 +504,27 @@ final class AssistantTurnTimestampFormatterTests: XCTestCase {
         XCTAssertNotNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: fixedTimestamp))
     }
 }
+
+final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
+    func testTranscriptUsesLazyStackForLongConversationScrollPerformance() throws {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let sourceURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("HermesMobile/Features/Chat/ChatTranscriptView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        let sourceLines = source.components(separatedBy: .newlines).map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+
+        XCTAssertTrue(
+            sourceLines.contains("LazyVStack(spacing: transcriptMessageSpacing) {"),
+            "The chat transcript should lazily realize message rows so long conversations do not lay out every bubble while scrolling."
+        )
+        XCTAssertFalse(
+            sourceLines.contains("VStack(spacing: transcriptMessageSpacing) {"),
+            "A plain VStack eagerly builds every transcript row and regresses long-chat scroll performance."
+        )
+    }
+}
