@@ -95,6 +95,28 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(media?.isRasterImageCandidate, false)
     }
 
+    func testAudioMediaReferencesAreAudioCandidates() throws {
+        let segments = TranscriptMediaParser.segments(
+            in: "Listen: MEDIA:/tmp/zora-output.mp3 and MEDIA:https://cdn.example.test/audio/voice.M4A?download=1"
+        )
+        let media = mediaReferences(in: segments)
+
+        XCTAssertEqual(media.map(\.rawReference), [
+            "/tmp/zora-output.mp3",
+            "https://cdn.example.test/audio/voice.M4A?download=1"
+        ])
+        XCTAssertTrue(try XCTUnwrap(media.first).isAudioCandidate)
+        XCTAssertFalse(try XCTUnwrap(media.first).isRasterImageCandidate)
+        XCTAssertTrue(try XCTUnwrap(media.last).isAudioCandidate)
+    }
+
+    func testNonAudioMediaReferenceIsNotAudioCandidate() {
+        let segments = TranscriptMediaParser.segments(in: "MEDIA:/tmp/result.png MEDIA:/tmp/report.pdf")
+        let media = mediaReferences(in: segments)
+
+        XCTAssertEqual(media.map(\.isAudioCandidate), [false, false])
+    }
+
     func testEmptyReferenceDisplayNameFallsBackToMedia() {
         XCTAssertEqual(TranscriptMediaReference(rawReference: "").displayName, "Media")
     }

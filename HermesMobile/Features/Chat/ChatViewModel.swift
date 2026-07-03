@@ -876,8 +876,8 @@ final class ChatViewModel {
         await attachmentCoordinator.attachmentRawData(path: path)
     }
 
-    func transcriptMediaThumbnailData(for reference: TranscriptMediaReference) async -> Data? {
-        await attachmentCoordinator.transcriptMediaThumbnailData(for: reference)
+    func transcriptMediaData(for reference: TranscriptMediaReference) async -> Data? {
+        await attachmentCoordinator.transcriptMediaData(for: reference)
     }
 
     func loadMessages(modelContext: ModelContext? = nil) async {
