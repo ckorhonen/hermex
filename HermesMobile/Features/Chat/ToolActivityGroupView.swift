@@ -38,10 +38,7 @@ struct ToolActivityGroupView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .thinMaterial,
-            cornerRadius: 10
-        )
+        .chatTimelineAccessorySurface()
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
     }

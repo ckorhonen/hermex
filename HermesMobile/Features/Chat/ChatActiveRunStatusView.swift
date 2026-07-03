@@ -18,10 +18,7 @@ struct ChatActiveRunStatusView: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 7)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .regularMaterial,
-            cornerRadius: 16
-        )
+        .chatTimelineAccessorySurface()
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.accessibilityLabel)
