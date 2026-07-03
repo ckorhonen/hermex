@@ -1,73 +1,75 @@
 import SwiftUI
 
-private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+private enum ChatAccessoryChrome {
+    static let cornerRadius: CGFloat = 14
+    static let insetCornerRadius: CGFloat = 12
+    static let strokeWidth: CGFloat = 0.5
+    static let increasedContrastStrokeWidth: CGFloat = 1
 
-    let fallbackMaterial: Material
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: max(cornerRadius, 16), style: .continuous)
-
-        content
-            .background(backgroundFill, in: shape)
-            .adaptiveGlass(
-                .regular,
-                isInteractive: false,
-                fallbackMaterial: fallbackMaterial,
-                in: shape
-            )
-            .clipShape(shape)
-            .overlay {
-                shape
-                    .stroke(strokeColor, lineWidth: colorSchemeContrast == .increased ? 1 : 0.8)
-                    .allowsHitTesting(false)
-            }
-            .overlay(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(ZoraBrand.accessoryAccent)
-                    .frame(width: 3)
-                    .padding(.vertical, 11)
-                    .padding(.leading, 7)
-                    .allowsHitTesting(false)
-            }
+    static func fill(reduceTransparency: Bool) -> Color {
+        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.90) : ZoraBrand.subtleFill
     }
 
-    private var backgroundFill: Color {
-        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.90) : ZoraBrand.accessoryFill
+    static func insetFill(reduceTransparency: Bool) -> Color {
+        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.86) : ZoraBrand.paper.opacity(0.065)
     }
 
-    private var strokeColor: Color {
-        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.44) : ZoraBrand.accessoryStroke
+    static func stroke(colorSchemeContrast: ColorSchemeContrast) -> Color {
+        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.44) : ZoraBrand.surfaceHairline
+    }
+
+    static func insetStroke(colorSchemeContrast: ColorSchemeContrast) -> Color {
+        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.38) : ZoraBrand.surfaceHairline
+    }
+
+    static func lineWidth(colorSchemeContrast: ColorSchemeContrast) -> CGFloat {
+        colorSchemeContrast == .increased ? increasedContrastStrokeWidth : strokeWidth
     }
 }
 
-private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
+private struct ChatAccessorySurfaceModifier: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
-    private var backgroundColor: Color {
-        if reduceTransparency {
-            return ZoraBrand.backgroundMid.opacity(0.86)
-        }
-
-        return ZoraBrand.accessoryFillInset
-    }
+    let cornerRadius: CGFloat
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(
+            cornerRadius: max(cornerRadius, ChatAccessoryChrome.cornerRadius),
+            style: .continuous
+        )
+
+        content
+            .background(ChatAccessoryChrome.fill(reduceTransparency: reduceTransparency), in: shape)
+            .clipShape(shape)
+            .overlay {
+                shape
+                    .stroke(
+                        ChatAccessoryChrome.stroke(colorSchemeContrast: colorSchemeContrast),
+                        lineWidth: ChatAccessoryChrome.lineWidth(colorSchemeContrast: colorSchemeContrast)
+                    )
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+private struct ChatAccessoryInsetModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: ChatAccessoryChrome.insetCornerRadius, style: .continuous)
 
         content
             .background(
-                backgroundColor,
+                ChatAccessoryChrome.insetFill(reduceTransparency: reduceTransparency),
                 in: shape
             )
             .overlay {
                 shape
                     .stroke(
-                        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.38) : ZoraBrand.surfaceHairline,
-                        lineWidth: colorSchemeContrast == .increased ? 1 : 0.65
+                        ChatAccessoryChrome.insetStroke(colorSchemeContrast: colorSchemeContrast),
+                        lineWidth: ChatAccessoryChrome.lineWidth(colorSchemeContrast: colorSchemeContrast)
                     )
                     .allowsHitTesting(false)
             }
@@ -76,16 +78,15 @@ private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
 
 extension View {
     func chatTimelineAccessorySurface(
-        fallbackMaterial: Material,
-        cornerRadius: CGFloat
+        fallbackMaterial _: Material = .thinMaterial,
+        cornerRadius: CGFloat = ChatAccessoryChrome.cornerRadius
     ) -> some View {
-        modifier(ChatTimelineAccessorySurfaceModifier(
-            fallbackMaterial: fallbackMaterial,
+        modifier(ChatAccessorySurfaceModifier(
             cornerRadius: cornerRadius
         ))
     }
 
     func chatTimelineAccessoryInsetSurface() -> some View {
-        modifier(ChatTimelineAccessoryInsetSurfaceModifier())
+        modifier(ChatAccessoryInsetModifier())
     }
 }

@@ -32,14 +32,7 @@ struct InlineAudioPlayerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(ZoraBrand.subtleFill)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
-        )
+        .chatTimelineAccessorySurface()
         .task {
             await model.loadIfNeeded(using: load)
         }
