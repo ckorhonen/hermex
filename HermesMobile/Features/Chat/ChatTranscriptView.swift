@@ -4,6 +4,7 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var transcriptScrollPositionID: String?
 
     let isLoading: Bool
     let errorMessage: String?
@@ -119,6 +120,7 @@ struct ChatTranscriptView: View {
                         )
                     }
                     .frame(width: viewportWidth)
+                    .scrollPosition(id: $transcriptScrollPositionID, anchor: .top)
                     .refreshable {
                         if hasOlderMessages {
                             await loadOlderMessagesPreservingPosition(proxy: proxy)
@@ -308,9 +310,14 @@ struct ChatTranscriptView: View {
 
     private func loadOlderMessagesPreservingPosition(proxy: ScrollViewProxy) async {
         let renderID = displayedTranscriptMessages.first?.renderID
+        if let renderID {
+            transcriptScrollPositionID = renderID
+        }
+
         let didLoad = await onLoadOlderMessages()
         guard didLoad, let renderID else { return }
 
+        transcriptScrollPositionID = renderID
         await Task.yield()
         if reduceMotion {
             proxy.scrollTo(renderID, anchor: .top)

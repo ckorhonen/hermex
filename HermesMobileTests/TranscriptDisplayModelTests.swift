@@ -538,5 +538,19 @@ final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
             ) != nil,
             "The lazy transcript stack should opt into scroll target layout so prepending older messages can restore the captured row ID."
         )
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"@State\s+private\s+var\s+transcriptScrollPositionID\s*:\s*String\?"#,
+                options: .regularExpression
+            ) != nil,
+            "The transcript scroll position ID should be state-backed so older-message pagination can preserve a row anchor across prepends."
+        )
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"\.scrollPosition\s*\(\s*id:\s*\$transcriptScrollPositionID\s*,\s*anchor:\s*\.top\s*\)"#,
+                options: .regularExpression
+            ) != nil,
+            "The scroll view should bind its scroll position to the captured transcript row anchor."
+        )
     }
 }
