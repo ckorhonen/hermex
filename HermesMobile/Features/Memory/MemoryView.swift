@@ -67,30 +67,42 @@ struct MemoryView: View {
         } else if !viewModel.hasLoaded {
             ProgressView("Loading memory...")
         } else {
-            List {
-                ForEach(MemorySection.allCases) { section in
-                    Section {
-                        MemorySectionContent(
-                            section: section,
-                            content: viewModel.content(for: section)
-                        )
-                            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                    } header: {
-                        MemorySectionHeader(
-                            section: section,
-                            modifiedAt: viewModel.modifiedAt(for: section),
-                            isEditingDisabled: viewModel.isSaving
-                        ) {
-                            viewModel.clearActionError()
-                            editingSection = section
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 22) {
+                    ForEach(MemorySection.allCases) { section in
+                        VStack(alignment: .leading, spacing: 8) {
+                            MemorySectionHeader(
+                                section: section,
+                                modifiedAt: viewModel.modifiedAt(for: section),
+                                isEditingDisabled: viewModel.isSaving
+                            ) {
+                                viewModel.clearActionError()
+                                editingSection = section
+                            }
+
+                            MemorySectionContent(
+                                section: section,
+                                content: viewModel.content(for: section)
+                            )
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(ZoraBrand.listDivider)
+                                    .frame(height: 0.65)
+                                    .allowsHitTesting(false)
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable {
                 await loadMemory()
             }
-            .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
     }
@@ -113,15 +125,23 @@ private struct MemorySectionHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Label(section.title, systemImage: section.systemImage)
+                .font(AppFont.caption(weight: .semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(ZoraBrand.secondaryForeground)
+
             Spacer()
+
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(ZoraBrand.tertiaryForeground)
             }
+
             Button(action: onEdit) {
                 Label("Edit \(section.title)", systemImage: "pencil")
                     .labelStyle(.iconOnly)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
             }
             .disabled(isEditingDisabled)
             .buttonStyle(.borderless)

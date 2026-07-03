@@ -340,17 +340,15 @@ struct MessageBubbleView: View {
     }
 
     private var userBubbleBackground: Color {
-        colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
+        ZoraBrand.chatBubbleFill
     }
 
     private var userBubbleForeground: Color {
-        Color(.label)
+        ZoraBrand.foreground
     }
 
     private var userBubbleBorder: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.08)
-            : Color.black.opacity(0.04)
+        ZoraBrand.chatBubbleStroke
     }
 
     private var messageText: String {
@@ -461,7 +459,7 @@ private struct GridAttachmentCell: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Image attachment \(attachmentAccessibilityName)")
@@ -470,7 +468,7 @@ private struct GridAttachmentCell: View {
     private var fileCell: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ZoraBrand.subtleFill)
 
             VStack(spacing: 5) {
                 Image(systemName: fileIconName)
@@ -494,7 +492,7 @@ private struct GridAttachmentCell: View {
         .frame(width: size, height: size)
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(fileDisplayName), \(fileExtensionLabel)")
@@ -502,7 +500,7 @@ private struct GridAttachmentCell: View {
 
     private var fallbackImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(ZoraBrand.subtleFill)
             .overlay(
                 Image(systemName: "photo")
                     .font(.system(size: 34, weight: .regular))
@@ -512,7 +510,7 @@ private struct GridAttachmentCell: View {
 
     private var placeholderImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(ZoraBrand.subtleFill)
             .overlay(
                 ProgressView()
                     .tint(Color(.tertiaryLabel))
@@ -610,7 +608,7 @@ private struct RemoteAttachmentImage: View {
 
     private var fallbackImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(ZoraBrand.subtleFill)
             .overlay(
                 Image(systemName: "photo")
                     .font(.system(size: 24, weight: .regular))
@@ -620,7 +618,7 @@ private struct RemoteAttachmentImage: View {
 
     private var placeholderImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(ZoraBrand.subtleFill)
             .overlay(
                 ProgressView()
                     .tint(Color(.tertiaryLabel))

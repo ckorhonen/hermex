@@ -37,6 +37,9 @@ struct HermesMobileApp: App {
 private enum ZoraDesignAuditScreen: String, CaseIterable, Identifiable {
     case sessions
     case chat
+    case tasks
+    case analytics
+    case memory
     case settings
 
     var id: String { rawValue }
@@ -45,6 +48,9 @@ private enum ZoraDesignAuditScreen: String, CaseIterable, Identifiable {
         switch self {
         case .sessions: "Sessions"
         case .chat: "Chat"
+        case .tasks: "Tasks"
+        case .analytics: "Analytics"
+        case .memory: "Memory"
         case .settings: "Settings"
         }
     }
@@ -71,6 +77,12 @@ private struct ZoraDesignAuditView: View {
                 ZoraAuditSessionsSurface()
             case .chat:
                 ZoraAuditChatSurface()
+            case .tasks:
+                ZoraAuditTasksSurface()
+            case .analytics:
+                ZoraAuditAnalyticsSurface()
+            case .memory:
+                ZoraAuditMemorySurface()
             case .settings:
                 ZoraAuditSettingsSurface()
             }
@@ -185,6 +197,134 @@ private struct ZoraAuditChatSurface: View {
             ZoraAuditComposer()
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
+        }
+    }
+}
+
+private struct ZoraAuditTasksSurface: View {
+    var body: some View {
+        NavigationStack {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    ZoraAuditSectionHeader(title: "Now", accessory: "2 running")
+
+                    ZoraAuditTaskHeroCard(
+                        title: "Build and TestFlight upload",
+                        subtitle: "xcodebuild test passed · archive queued",
+                        status: "Running",
+                        progress: 0.72,
+                        accent: ZoraBrand.selectionAccent
+                    )
+
+                    ZoraAuditSectionHeader(title: "Queue", accessory: "Primary agent")
+
+                    VStack(spacing: 10) {
+                        ZoraAuditTaskRow(
+                            icon: "wrench.and.screwdriver",
+                            title: "Repair UI compile fallout",
+                            subtitle: "Completed · design tokens applied",
+                            status: "Done"
+                        )
+
+                        ZoraAuditTaskRow(
+                            icon: "iphone.gen3",
+                            title: "Simulator screenshot QA",
+                            subtitle: "Main, chat, tasks, analytics, memory",
+                            status: "Review"
+                        )
+
+                        ZoraAuditTaskRow(
+                            icon: "paperplane.fill",
+                            title: "Upload to TestFlight",
+                            subtitle: "SourceBottle distribution lane",
+                            status: "Next"
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 56)
+            }
+            .navigationTitle("Tasks")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct ZoraAuditAnalyticsSurface: View {
+    var body: some View {
+        NavigationStack {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    ZoraAuditSectionHeader(title: "Overview", accessory: "Last 7 days")
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ZoraAuditMetricTile(title: "Runs", value: "128", delta: "+18%")
+                        ZoraAuditMetricTile(title: "Avg cost", value: "$0.09", delta: "-7%")
+                        ZoraAuditMetricTile(title: "Tokens", value: "4.2M", delta: "+11%")
+                        ZoraAuditMetricTile(title: "Success", value: "94%", delta: "+3%")
+                    }
+
+                    ZoraAuditSettingsCard(title: "Model mix") {
+                        ZoraAuditAnalyticsBar(label: "Gemma 3 12B", value: 0.54)
+                        ZoraAuditHairline()
+                        ZoraAuditAnalyticsBar(label: "Spark Qwen 35B", value: 0.28)
+                        ZoraAuditHairline()
+                        ZoraAuditAnalyticsBar(label: "OpenRouter fallback", value: 0.18)
+                    }
+
+                    ZoraAuditSettingsCard(title: "Top sessions") {
+                        ZoraAuditSettingsRow(icon: "sparkles", title: "Zora iOS branding", value: "42 msgs")
+                        ZoraAuditHairline()
+                        ZoraAuditSettingsRow(icon: "network", title: "Homelab ops", value: "31 msgs")
+                        ZoraAuditHairline()
+                        ZoraAuditSettingsRow(icon: "shippingbox", title: "Release admin", value: "19 msgs")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 56)
+            }
+            .navigationTitle("Analytics")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct ZoraAuditMemorySurface: View {
+    var body: some View {
+        NavigationStack {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    ZoraAuditSectionHeader(title: "Durable context", accessory: "Synced")
+
+                    ZoraAuditMemoryCard(
+                        icon: "brain",
+                        title: "My Notes",
+                        subtitle: "Environment, tool quirks, delivery preferences",
+                        bodyText: "Stable operating context, environment notes, and preferences are grouped into warm cards with clear hierarchy."
+                    )
+
+                    ZoraAuditMemoryCard(
+                        icon: "person.crop.circle",
+                        title: "User Profile",
+                        subtitle: "Working style and project context",
+                        bodyText: "Personal profile details stay readable without relying on cold system greys or heavy boxed sections."
+                    )
+
+                    ZoraAuditMemoryCard(
+                        icon: "sparkles.rectangle.stack",
+                        title: "Soul",
+                        subtitle: "Agent persona",
+                        bodyText: "Persona guidance is presented as durable context: calm, concise, and easy to scan under pressure."
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 56)
+            }
+            .navigationTitle("Memory")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -526,6 +666,185 @@ private struct ZoraAuditComposer: View {
         .adaptiveGlass(.regular, isInteractive: true, fallbackMaterial: .ultraThinMaterial, in: shape)
         .overlay(shape.stroke(ZoraBrand.cardStroke, lineWidth: 0.75))
         .shadow(color: Color.black.opacity(0.28), radius: 20, y: 12)
+    }
+}
+
+private struct ZoraAuditTaskHeroCard: View {
+    let title: String
+    let subtitle: String
+    let status: String
+    let progress: CGFloat
+    let accent: Color
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(AppFont.title3(weight: .bold))
+                    .foregroundStyle(ZoraBrand.ink)
+                    .frame(width: 42, height: 42)
+                    .background(accent, in: Circle())
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(AppFont.headline(weight: .semibold))
+                        .foregroundStyle(ZoraBrand.foreground)
+                    Text(subtitle)
+                        .font(AppFont.caption())
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(status.uppercased())
+                    .font(AppFont.caption2(weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(accent)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(accent.opacity(0.12), in: Capsule(style: .continuous))
+            }
+
+            GeometryReader { proxy in
+                let clampedProgress = min(max(progress, 0), 1)
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(ZoraBrand.subtleFill)
+                    Capsule(style: .continuous)
+                        .fill(accent)
+                        .frame(width: proxy.size.width * clampedProgress)
+                }
+            }
+            .frame(height: 8)
+        }
+        .padding(18)
+        .background(ZoraBrand.cardFillStrong, in: shape)
+        .adaptiveGlass(.regular, fallbackMaterial: .regularMaterial, in: shape)
+        .overlay(shape.stroke(ZoraBrand.cardStroke, lineWidth: 0.75))
+        .shadow(color: Color.black.opacity(0.22), radius: 18, y: 10)
+    }
+}
+
+private struct ZoraAuditTaskRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let status: String
+
+    var body: some View {
+        ZoraAuditCard(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.selectionAccent)
+                    .frame(width: 30, height: 30)
+                    .background(ZoraBrand.selectionAccent.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(AppFont.subheadline(weight: .semibold))
+                        .foregroundStyle(ZoraBrand.foreground)
+                    Text(subtitle)
+                        .font(AppFont.caption())
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(status)
+                    .font(AppFont.caption2(weight: .bold))
+                    .foregroundStyle(ZoraBrand.tertiaryForeground)
+            }
+        }
+    }
+}
+
+private struct ZoraAuditMetricTile: View {
+    let title: String
+    let value: String
+    let delta: String
+
+    var body: some View {
+        ZoraAuditCard(spacing: 7) {
+            Text(title.uppercased())
+                .font(AppFont.caption2(weight: .bold))
+                .tracking(0.7)
+                .foregroundStyle(ZoraBrand.secondaryForeground)
+            Text(value)
+                .font(AppFont.title3(weight: .bold))
+                .foregroundStyle(ZoraBrand.foreground)
+            Text(delta)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(ZoraBrand.selectionAccent)
+        }
+    }
+}
+
+private struct ZoraAuditAnalyticsBar: View {
+    let label: String
+    let value: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(label)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.foreground)
+                Spacer(minLength: 8)
+                Text("\(Int((value * 100).rounded()))%")
+                    .font(AppFont.caption(weight: .bold))
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
+            }
+
+            GeometryReader { proxy in
+                let clampedValue = min(max(value, 0), 1)
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(ZoraBrand.subtleFill)
+                    Capsule(style: .continuous)
+                        .fill(ZoraBrand.selectionAccent)
+                        .frame(width: proxy.size.width * clampedValue)
+                }
+            }
+            .frame(height: 7)
+        }
+        .frame(minHeight: 42)
+    }
+}
+
+private struct ZoraAuditMemoryCard: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let bodyText: String
+
+    var body: some View {
+        ZoraAuditCard(spacing: 11) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.selectionAccent)
+                    .frame(width: 34, height: 34)
+                    .background(ZoraBrand.selectionAccent.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AppFont.subheadline(weight: .bold))
+                        .foregroundStyle(ZoraBrand.foreground)
+                    Text(subtitle)
+                        .font(AppFont.caption())
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                }
+            }
+
+            Text(bodyText)
+                .font(AppFont.caption())
+                .lineSpacing(2)
+                .foregroundStyle(ZoraBrand.secondaryForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

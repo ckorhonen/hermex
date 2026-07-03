@@ -141,6 +141,7 @@ struct TaskDetailView: View {
         .task {
             await loadOutput()
         }
+        .zoraBrandedScreen()
     }
 
     @ViewBuilder
@@ -252,7 +253,7 @@ struct TaskDetailView: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(ZoraBrand.selectionAccent)
                         .frame(width: 28, height: 28)
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -278,7 +279,12 @@ struct TaskDetailView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .padding(12)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.75)
+                        .allowsHitTesting(false)
+                }
             }
             .buttonStyle(.plain)
         }
@@ -322,7 +328,12 @@ struct TaskDetailView: View {
                 .font(.footnote)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.75)
+                        .allowsHitTesting(false)
+                }
             }
         }
     }
@@ -344,8 +355,13 @@ struct TaskDetailView: View {
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                             .padding(12)
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(ZoraBrand.codeBlockFill)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(ZoraBrand.codeBlockStroke, lineWidth: 0.75)
+                                    .allowsHitTesting(false)
+                            }
                     } else {
                         Text("Empty output")
                             .font(.subheadline)

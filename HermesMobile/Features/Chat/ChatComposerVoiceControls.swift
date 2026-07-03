@@ -144,7 +144,7 @@ struct ComposerVoiceRecordingBar: View {
 
             Text(AudioDurationFormatter.string(from: elapsed))
                 .font(.callout.monospacedDigit())
-                .foregroundStyle(.primary)
+                .foregroundStyle(ZoraBrand.foreground)
 
             Spacer(minLength: 8)
 
@@ -155,14 +155,18 @@ struct ComposerVoiceRecordingBar: View {
                 systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
             )
             .font(.caption)
-            .foregroundStyle(isCancelArmed ? Color.red : Color.secondary)
+            .foregroundStyle(isCancelArmed ? Color.red : ZoraBrand.secondaryForeground)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ZoraBrand.subtleFill)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Recording voice note, \(AudioDurationFormatter.string(from: elapsed))"))
         .accessibilityAddTraits(.updatesFrequently)

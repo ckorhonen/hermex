@@ -372,7 +372,7 @@ private struct ChatMarkdownView: View {
             .markdownTextStyle(\.code) {
                 FontFamilyVariant(.monospaced)
                 FontSize(.em(0.88))
-                BackgroundColor(SwiftUI.Color(.tertiarySystemGroupedBackground))
+                BackgroundColor(ZoraBrand.inlineCodeFill)
             }
             .markdownCodeSyntaxHighlighter(.plainText)
             .markdownBlockStyle(\.paragraph) { configuration in
@@ -470,7 +470,7 @@ private struct ChatCodeBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(SwiftUI.Color(.separator).opacity(0.35), lineWidth: 1)
+                .stroke(ZoraBrand.codeBlockStroke, lineWidth: 1)
         }
         .onChange(of: content) { _, _ in
             didCopy = false
@@ -484,9 +484,7 @@ private struct ChatCodeBlock: View {
     }
 
     private var codeBlockBackground: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.04, green: 0.05, blue: 0.07)
-            : SwiftUI.Color(.secondarySystemBackground)
+        ZoraBrand.codeBlockFill
     }
 
     @ViewBuilder
@@ -1193,11 +1191,7 @@ private extension MarkdownUI.Theme {
             .code {
                 FontFamilyVariant(.monospaced)
                 FontSize(.em(0.85))
-                BackgroundColor(
-                    colorScheme == .dark
-                        ? SwiftUI.Color(red: 0.08, green: 0.09, blue: 0.12)
-                        : SwiftUI.Color(.tertiarySystemGroupedBackground)
-                )
+                BackgroundColor(ZoraBrand.inlineCodeFill)
             }
             .codeBlock { configuration in
                 MathFenceOrCodeBlock(

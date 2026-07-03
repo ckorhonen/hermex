@@ -98,13 +98,13 @@ private struct TranscriptMediaThumbnailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                        .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
                 )
         } else if didAttemptLoad {
             TranscriptMediaUnavailableChip(reference: reference)
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(.systemFill))
+                .fill(ZoraBrand.subtleFill)
                 .frame(width: thumbnailWidth, height: thumbnailHeight)
                 .overlay {
                     ProgressView()
@@ -121,29 +121,29 @@ private struct TranscriptMediaUnavailableChip: View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(.secondaryLabel))
+                .foregroundStyle(ZoraBrand.secondaryForeground)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(reference.displayName)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.label))
+                    .foregroundStyle(ZoraBrand.foreground)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Text("Media unavailable")
                     .font(.caption2)
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
                     .lineLimit(1)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        .background(ZoraBrand.subtleFill)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Media unavailable \(reference.displayName)"))

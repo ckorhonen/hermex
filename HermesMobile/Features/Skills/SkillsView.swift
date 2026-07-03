@@ -129,6 +129,7 @@ private struct SkillCategorySection: View {
 
                     if index < skills.count - 1 {
                         Divider()
+                            .overlay(ZoraBrand.listDivider)
                             .padding(.leading, 58)
                     }
                 }
@@ -146,7 +147,7 @@ private struct SkillRow: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
-                .background(Color(.tertiarySystemFill).opacity(0.7), in: Circle())
+                .background(ZoraBrand.subtleFill, in: Circle())
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayName)
@@ -229,6 +230,7 @@ struct SkillDetailView: View {
                     )
                 }
             }
+            .zoraBrandedScreen()
     }
 
     @ViewBuilder
@@ -324,7 +326,7 @@ private struct SkillLinkedFilesSection: View {
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(.primary)
                                 .frame(width: 34, height: 34)
-                                .background(Color(.tertiarySystemFill).opacity(0.7), in: Circle())
+                                .background(ZoraBrand.subtleFill, in: Circle())
 
                             Text(fileName)
                                 .font(.subheadline)
@@ -344,6 +346,7 @@ private struct SkillLinkedFilesSection: View {
 
                     if index < fileNames.count - 1 {
                         Divider()
+                            .overlay(ZoraBrand.listDivider)
                             .padding(.leading, 54)
                     }
                 }

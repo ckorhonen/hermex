@@ -53,9 +53,9 @@ private struct ComposerAttachmentThumbnailView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
                     .frame(width: 24, height: 24)
-                    .background(Circle().fill(Color(.systemBackground)))
-                    .foregroundStyle(Color(.label))
-                    .overlay(Circle().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5))
+                    .background(Circle().fill(ZoraBrand.cardFillStrong))
+                    .foregroundStyle(ZoraBrand.foreground)
+                    .overlay(Circle().stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5))
             }
             .buttonStyle(.chatTactile(
                 .icon,
@@ -93,7 +93,7 @@ private struct ComposerAttachmentThumbnailView: View {
                     .scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(.systemFill))
+                    .fill(ZoraBrand.subtleFill)
                     .overlay(
                         Image(systemName: "photo")
                             .font(.system(size: 30, weight: .regular))
@@ -145,7 +145,7 @@ private struct ComposerAttachmentThumbnailView: View {
         .frame(minHeight: usesAccessibilityLayout ? 112 : 92)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ZoraBrand.subtleFill)
         )
         .overlay(previewBorder(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
@@ -154,7 +154,7 @@ private struct ComposerAttachmentThumbnailView: View {
 
     private func previewBorder(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+            .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
     }
 
     private var fileExtensionLabel: String {

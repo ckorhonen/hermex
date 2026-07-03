@@ -100,7 +100,14 @@ struct SessionSidebarUtilityRows: View {
     }
 
     private var utilityLinks: some View {
-        VStack(alignment: .leading, spacing: Self.rowSpacing) {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 10, alignment: .top),
+                GridItem(.flexible(), spacing: 10, alignment: .top)
+            ],
+            alignment: .leading,
+            spacing: 10
+        ) {
             SidebarNavButton(title: String(localized: "Tasks"), assetImage: "LucideCalendarClock") {
                 openDestination(.tasks)
             }
@@ -801,27 +808,40 @@ struct SessionListFloatingChatButtonStyle: ButtonStyle {
 }
 
 struct SidebarNavButton: View {
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     let title: String
     let assetImage: String
     let action: () -> Void
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
         HapticButton(action: action) {
-            HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 12) {
                 SidebarUtilityIcon(assetImage: assetImage)
 
                 Text(title)
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            .padding(13)
+            .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
+            .background(ZoraBrand.subtleFill, in: shape)
+            .overlay {
+                shape
+                    .stroke(tileStroke, lineWidth: colorSchemeContrast == .increased ? 1 : 0.75)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+    }
+
+    private var tileStroke: Color {
+        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.34) : ZoraBrand.surfaceHairline
     }
 }
 

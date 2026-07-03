@@ -81,18 +81,19 @@ struct TasksView: View {
                 Text("Scheduled jobs from the Hermes server will appear here.")
             }
         } else {
-            List {
-                Section {
-                    HStack {
-                        Label("Running now", systemImage: "bolt.fill")
-                        Spacer()
-                        Text("\(viewModel.activeRunningCount)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    runningSummaryRow
+                        .padding(.bottom, 22)
 
-                Section("Scheduled Jobs") {
-                    ForEach(viewModel.jobs) { job in
+                    Text("Scheduled Jobs")
+                        .textCase(.uppercase)
+                        .font(AppFont.caption(weight: .semibold))
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 8)
+
+                    ForEach(Array(viewModel.jobs.enumerated()), id: \.element.id) { index, job in
                         NavigationLink {
                             TaskDetailView(
                                 job: job,
@@ -108,16 +109,56 @@ struct TasksView: View {
                                 job: job,
                                 runningElapsed: viewModel.runningElapsed(for: job)
                             )
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < viewModel.jobs.count - 1 {
+                            Divider()
+                                .overlay(ZoraBrand.listDivider)
                         }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable {
                 await loadTasks()
             }
-            .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
+    }
+
+    private var runningSummaryRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bolt.fill")
+                .font(AppFont.subheadline(weight: .semibold))
+                .foregroundStyle(ZoraBrand.selectionAccent)
+                .frame(width: 34, height: 34)
+                .background(ZoraBrand.selectionAccent.opacity(0.14), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Running now")
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.foreground)
+
+                Text("Active scheduled work")
+                    .font(AppFont.caption())
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
+            }
+
+            Spacer(minLength: 12)
+
+            Text("\(viewModel.activeRunningCount)")
+                .font(AppFont.title3(weight: .semibold))
+                .foregroundStyle(ZoraBrand.foreground)
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
     }
 
     private func loadTasks() async {

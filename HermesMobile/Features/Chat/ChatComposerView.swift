@@ -41,15 +41,15 @@ private struct ComposerStatusView: View {
     }
 
     private var textColor: Color {
-        isError ? Color(.label) : Color.secondary
+        isError ? Color(.label) : ZoraBrand.secondaryForeground
     }
 
     private var backgroundColor: Color {
-        isError ? Color.red.opacity(0.08) : Color(.secondarySystemBackground)
+        isError ? Color.red.opacity(0.08) : ZoraBrand.subtleFill
     }
 
     private var borderColor: Color {
-        isError ? Color.red.opacity(0.25) : Color(.separator).opacity(0.25)
+        isError ? Color.red.opacity(0.25) : ZoraBrand.surfaceHairline
     }
 }
 

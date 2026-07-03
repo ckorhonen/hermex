@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SessionRowView: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption2) private var pinnedIconSize: CGFloat = 11
     @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 8
@@ -13,8 +12,6 @@ struct SessionRowView: View {
     var isViewingCachedData = false
 
     var body: some View {
-        let rowShape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-
         HStack(alignment: .top, spacing: 10) {
             if Self.isActiveStreaming(session) {
                 ActiveSessionStreamingIndicator()
@@ -26,14 +23,14 @@ struct SessionRowView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, rowVerticalPadding)
         .frame(minHeight: rowMinimumHeight, alignment: .center)
-        .background(rowFill, in: rowShape)
-        .overlay {
-            rowShape
-                .stroke(rowStroke, lineWidth: colorSchemeContrast == .increased ? 1.1 : 0.75)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(rowDivider)
+                .frame(height: colorSchemeContrast == .increased ? 1 : 0.65)
+                .padding(.leading, Self.isActiveStreaming(session) ? 30 : 0)
                 .allowsHitTesting(false)
         }
-        .shadow(color: rowShadowColor, radius: rowShadowRadius, y: rowShadowYOffset)
-        .contentShape(rowShape)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
     }
@@ -260,34 +257,12 @@ struct SessionRowView: View {
         dynamicTypeSize.isAccessibilitySize ? 10 : 9
     }
 
-    private var rowFill: Color {
-        if reduceTransparency {
-            return ZoraBrand.backgroundMid.opacity(Self.isActiveStreaming(session) ? 0.98 : 0.92)
-        }
-
-        return Self.isActiveStreaming(session) ? ZoraBrand.cardFillStrong : ZoraBrand.cardFill
-    }
-
-    private var rowStroke: Color {
+    private var rowDivider: Color {
         if colorSchemeContrast == .increased {
-            return ZoraBrand.foreground.opacity(0.38)
+            return ZoraBrand.foreground.opacity(0.30)
         }
 
-        return Self.isActiveStreaming(session) ? ZoraBrand.selectionAccent.opacity(0.34) : ZoraBrand.cardStroke
-    }
-
-    private var rowShadowColor: Color {
-        Self.isActiveStreaming(session)
-            ? ZoraBrand.selectionAccent.opacity(reduceTransparency ? 0.10 : 0.18)
-            : Color.black.opacity(reduceTransparency ? 0.08 : 0.16)
-    }
-
-    private var rowShadowRadius: CGFloat {
-        reduceTransparency ? 8 : (Self.isActiveStreaming(session) ? 18 : 14)
-    }
-
-    private var rowShadowYOffset: CGFloat {
-        reduceTransparency ? 4 : 8
+        return Self.isActiveStreaming(session) ? ZoraBrand.listDividerStrong : ZoraBrand.listDivider
     }
 
     private var relativeDate: String? {

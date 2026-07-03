@@ -34,11 +34,11 @@ struct InlineAudioPlayerView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ZoraBrand.subtleFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
         )
         .task {
             await model.loadIfNeeded(using: load)
@@ -80,7 +80,7 @@ struct InlineAudioPlayerView: View {
 
         case .failed:
             ZStack {
-                Circle().fill(Color(.systemFill))
+                Circle().fill(ZoraBrand.subtleFill)
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)

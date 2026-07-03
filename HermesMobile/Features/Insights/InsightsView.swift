@@ -56,108 +56,162 @@ struct InsightsView: View {
                 Text("Session usage data will appear here once you have conversations.")
             }
         } else {
-            List {
-                Section {
-                    Picker("Timeframe", selection: $viewModel.selectedTimeframe) {
-                        ForEach(AnalyticsTimeframe.allCases) { timeframe in
-                            Text(timeframe.title).tag(timeframe)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    timeframeControl
+
+                    AnalyticsSection(title: viewModel.periodTitle) {
+                        LazyVGrid(columns: metricColumns, alignment: .leading, spacing: 12) {
+                            AnalyticsCard(title: String(localized: "Sessions"), value: "\(viewModel.sessionCount)", icon: "bubble.left.and.bubble.right", color: ZoraBrand.selectionAccent)
+                            AnalyticsCard(title: String(localized: "Messages"), value: formatTokens(viewModel.totalMessages), icon: "text.bubble", color: ZoraBrand.foreground)
+                            AnalyticsCard(title: String(localized: "Input Tokens"), value: formatTokens(viewModel.totalInputTokens), icon: "arrow.down.circle", color: ZoraBrand.selectionAccent)
+                            AnalyticsCard(title: String(localized: "Output Tokens"), value: formatTokens(viewModel.totalOutputTokens), icon: "arrow.up.circle", color: ZoraBrand.foreground)
+                            AnalyticsCard(title: String(localized: "Total Tokens"), value: formatTokens(viewModel.totalTokens), icon: "sum", color: ZoraBrand.selectionAccent)
+                            AnalyticsCard(title: String(localized: "Estimated Cost"), value: viewModel.estimatedCost.formattedCost(collapsingZeroCents: true), icon: "dollarsign.circle", color: ZoraBrand.foreground)
                         }
                     }
-                    .pickerStyle(.segmented)
-                }
 
-                Section {
-                    AnalyticsCard(title: String(localized: "Sessions"), value: "\(viewModel.sessionCount)", icon: "bubble.left.and.bubble.right", color: .blue)
-                    AnalyticsCard(title: String(localized: "Messages"), value: formatTokens(viewModel.totalMessages), icon: "text.bubble", color: .cyan)
-                    AnalyticsCard(title: String(localized: "Input Tokens"), value: formatTokens(viewModel.totalInputTokens), icon: "arrow.down.circle", color: .green)
-                    AnalyticsCard(title: String(localized: "Output Tokens"), value: formatTokens(viewModel.totalOutputTokens), icon: "arrow.up.circle", color: .orange)
-                    AnalyticsCard(title: String(localized: "Total Tokens"), value: formatTokens(viewModel.totalTokens), icon: "sum", color: .purple)
-                    AnalyticsCard(title: String(localized: "Estimated Cost"), value: viewModel.estimatedCost.formattedCost(collapsingZeroCents: true), icon: "dollarsign.circle", color: .indigo)
-                } header: {
-                    Text(viewModel.periodTitle)
-                        .textCase(.uppercase)
-                }
+                    if !viewModel.modelBreakdowns.isEmpty {
+                        AnalyticsSection(title: String(localized: "Models")) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(viewModel.modelBreakdowns.prefix(10).enumerated()), id: \.offset) { index, model in
+                                    ModelBreakdownRow(model: model)
+                                        .padding(.vertical, 10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !viewModel.modelBreakdowns.isEmpty {
-                    Section("Models") {
-                        ForEach(Array(viewModel.modelBreakdowns.prefix(10).enumerated()), id: \.offset) { _, model in
-                            ModelBreakdownRow(model: model)
-                        }
-                    }
-                }
-
-                if !viewModel.recentDailyTokens.isEmpty {
-                    Section("Recent Daily Tokens") {
-                        ForEach(Array(viewModel.recentDailyTokens.enumerated()), id: \.offset) { _, day in
-                            DailyTokenRow(day: day)
-                        }
-                    }
-                }
-
-                if viewModel.peakDay != nil || viewModel.peakHour != nil {
-                    Section("Activity") {
-                        if let peakDay = viewModel.peakDay {
-                            ActivitySummaryRow(
-                                icon: "calendar",
-                                title: String(localized: "Peak Day"),
-                                value: peakDay.day ?? String(localized: "Unknown"),
-                                detail: String(localized: "\(peakDay.sessions ?? 0) sessions")
-                            )
-                        }
-
-                        if let peakHour = viewModel.peakHour {
-                            ActivitySummaryRow(
-                                icon: "clock",
-                                title: String(localized: "Peak Hour"),
-                                value: formatHour(peakHour.hour),
-                                detail: String(localized: "\(peakHour.sessions ?? 0) sessions")
-                            )
-                        }
-                    }
-                }
-
-                if !viewModel.topSessions.isEmpty {
-                    Section("Top Sessions") {
-                        ForEach(viewModel.topSessions.prefix(10)) { session in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(session.title ?? String(localized: "Untitled Session"))
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .lineLimit(1)
-
-                                HStack(spacing: 12) {
-                                    let input = session.inputTokens ?? 0
-                                    let output = session.outputTokens ?? 0
-                                    let total = input + output
-
-                                    Text("\(formatTokens(total)) tokens")
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-
-                                    if let cost = session.estimatedCost, cost > 0 {
-                                        Text(cost.formattedCost())
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                    if index < min(viewModel.modelBreakdowns.count, 10) - 1 {
+                                        Divider().overlay(ZoraBrand.listDivider)
                                     }
                                 }
                             }
-                            .padding(.vertical, 4)
                         }
                     }
-                }
 
-                Section {
+                    if !viewModel.recentDailyTokens.isEmpty {
+                        AnalyticsSection(title: String(localized: "Recent Daily Tokens")) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(viewModel.recentDailyTokens.enumerated()), id: \.offset) { index, day in
+                                    DailyTokenRow(day: day)
+                                        .padding(.vertical, 10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    if index < viewModel.recentDailyTokens.count - 1 {
+                                        Divider().overlay(ZoraBrand.listDivider)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if viewModel.peakDay != nil || viewModel.peakHour != nil {
+                        AnalyticsSection(title: String(localized: "Activity")) {
+                            VStack(spacing: 0) {
+                                if let peakDay = viewModel.peakDay {
+                                    ActivitySummaryRow(
+                                        icon: "calendar",
+                                        title: String(localized: "Peak Day"),
+                                        value: peakDay.day ?? String(localized: "Unknown"),
+                                        detail: String(localized: "\(peakDay.sessions ?? 0) sessions")
+                                    )
+                                    .padding(.vertical, 10)
+                                }
+
+                                if viewModel.peakDay != nil, viewModel.peakHour != nil {
+                                    Divider().overlay(ZoraBrand.listDivider)
+                                }
+
+                                if let peakHour = viewModel.peakHour {
+                                    ActivitySummaryRow(
+                                        icon: "clock",
+                                        title: String(localized: "Peak Hour"),
+                                        value: formatHour(peakHour.hour),
+                                        detail: String(localized: "\(peakHour.sessions ?? 0) sessions")
+                                    )
+                                    .padding(.vertical, 10)
+                                }
+                            }
+                        }
+                    }
+
+                    if !viewModel.topSessions.isEmpty {
+                        AnalyticsSection(title: String(localized: "Top Sessions")) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(viewModel.topSessions.prefix(10).enumerated()), id: \.offset) { index, session in
+                                    topSessionRow(session)
+                                        .padding(.vertical, 10)
+
+                                    if index < min(viewModel.topSessions.count, 10) - 1 {
+                                        Divider().overlay(ZoraBrand.listDivider)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Text(viewModel.sourceDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption())
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                        .padding(.horizontal, 4)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .listStyle(.insetGrouped)
             .refreshable {
                 await loadInsights()
             }
+            .background(Color.clear)
         }
+    }
+
+    private var metricColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: 12, alignment: .top),
+            GridItem(.flexible(), spacing: 12, alignment: .top)
+        ]
+    }
+
+    private var timeframeControl: some View {
+        Picker("Timeframe", selection: $viewModel.selectedTimeframe) {
+            ForEach(AnalyticsTimeframe.allCases) { timeframe in
+                Text(timeframe.title).tag(timeframe)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(4)
+        .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.75)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func topSessionRow(_ session: SessionSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(session.title ?? String(localized: "Untitled Session"))
+                .font(AppFont.subheadline(weight: .medium))
+                .foregroundStyle(ZoraBrand.foreground)
+                .lineLimit(1)
+
+            HStack(spacing: 12) {
+                let input = session.inputTokens ?? 0
+                let output = session.outputTokens ?? 0
+                let total = input + output
+
+                Text("\(formatTokens(total)) tokens")
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
+
+                if let cost = session.estimatedCost, cost > 0 {
+                    Text(cost.formattedCost())
+                        .font(AppFont.caption())
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func loadInsights() async {
@@ -180,33 +234,69 @@ struct InsightsView: View {
     }
 }
 
+private struct AnalyticsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .textCase(.uppercase)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(ZoraBrand.secondaryForeground)
+                .padding(.horizontal, 4)
+
+            content
+        }
+    }
+}
+
 private struct AnalyticsCard: View {
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     let title: String
     let value: String
     let icon: String
     let color: Color
 
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(color)
-                .frame(width: 40, height: 40)
-                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: icon)
+                .font(AppFont.title3(weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 36, height: 36)
+                .background(color.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
+                    .lineLimit(2)
 
                 Text(value)
-                    .font(.title3)
-                    .fontWeight(.semibold)
+                    .font(AppFont.title3(weight: .semibold))
+                    .foregroundStyle(ZoraBrand.foreground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-
-            Spacer()
         }
-        .padding(.vertical, 8)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
+        .background(ZoraBrand.subtleFill, in: shape)
+        .overlay {
+            shape
+                .stroke(
+                    colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.34) : ZoraBrand.surfaceHairline,
+                    lineWidth: colorSchemeContrast == .increased ? 1 : 0.75
+                )
+                .allowsHitTesting(false)
+        }
         .accessibilityElement(children: .combine)
     }
 }

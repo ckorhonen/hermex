@@ -76,6 +76,23 @@ enum ZoraBrand {
     static let subtleFill = paper.opacity(0.09)
     static let hairline = whisper
 
+    // Warm semantic surfaces for the Zora-branded app shell. These replace the
+    // system greys/blacks that fight the terracotta canvas and mirror the wiki's
+    // "calm surface + restrained hairline" treatment.
+    static let surfaceHairline = paper.opacity(0.18)
+    static let surfaceHairlineStrong = paper.opacity(0.30)
+    static let listDivider = paper.opacity(0.16)
+    static let listDividerStrong = paper.opacity(0.24)
+    static let chatBubbleFill = Color(red: 96.0 / 255.0, green: 27.0 / 255.0, blue: 12.0 / 255.0).opacity(0.82)
+    static let chatBubbleStroke = paper.opacity(0.24)
+    static let inlineCodeFill = Color(red: 86.0 / 255.0, green: 24.0 / 255.0, blue: 10.0 / 255.0).opacity(0.72)
+    static let codeBlockFill = Color(red: 75.0 / 255.0, green: 21.0 / 255.0, blue: 9.0 / 255.0).opacity(0.84)
+    static let codeBlockStroke = paper.opacity(0.22)
+    static let accessoryFill = paper.opacity(0.10)
+    static let accessoryFillInset = paper.opacity(0.07)
+    static let accessoryStroke = paper.opacity(0.20)
+    static let accessoryAccent = paper.opacity(0.36)
+
     static func background(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark ? darkBackground : lightBackground
     }
@@ -280,7 +297,7 @@ enum ZoraWaveState: Equatable {
     var amplitude: Double {
         switch self {
         case .idle:
-            return 0.08
+            return 0.16
         case .listening:
             return 0.35
         case let .speaking(intensity):
@@ -293,7 +310,7 @@ enum ZoraWaveState: Equatable {
     var speed: Double {
         switch self {
         case .idle:
-            return 0.35
+            return 0.52
         case .listening:
             return 0.9
         case .speaking:
@@ -306,7 +323,7 @@ enum ZoraWaveState: Equatable {
     var harmonics: Int {
         switch self {
         case .idle:
-            return 2
+            return 3
         case .listening, .thinking:
             return 3
         case .speaking:
@@ -316,6 +333,8 @@ enum ZoraWaveState: Equatable {
 
     var envelope: ZoraWaveShape.Envelope {
         switch self {
+        case .idle:
+            return .traveling
         case .thinking:
             return .traveling
         default:
