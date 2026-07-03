@@ -456,6 +456,105 @@ struct CronOutputItem: Decodable, Equatable, Identifiable {
     }
 }
 
+struct CronRunListItem: Equatable, Identifiable {
+    let id: String
+    let filename: String?
+    let modified: Double?
+    let size: Int?
+    let usage: CronRunUsage?
+    let outputContent: String?
+
+    var displayTitle: String {
+        CronOutputItem.normalizedFilename(filename) ?? String(localized: "Untitled run")
+    }
+
+    var hasOutputContent: Bool {
+        CronOutputItem.normalizedFilename(outputContent) != nil
+    }
+
+    static func items(
+        runs: [CronRunHistoryItem],
+        outputs: [CronOutputItem]
+    ) -> [CronRunListItem] {
+        var matchedOutputFilenames = Set<String>()
+
+        var runItems: [CronRunListItem] = []
+        for (index, run) in runs.enumerated() {
+            let output = outputs.output(matching: run)
+            if let filename = CronOutputItem.normalizedFilename(output?.filename ?? run.filename) {
+                matchedOutputFilenames.insert(filename)
+            }
+
+            let identitySuffix = CronOutputItem.normalizedFilename(run.filename)
+                ?? run.modified.map { String($0) }
+                ?? "unknown"
+
+            runItems.append(CronRunListItem(
+                id: "run-\(index)-\(identitySuffix)",
+                filename: run.filename,
+                modified: run.modified,
+                size: run.size,
+                usage: run.usage,
+                outputContent: output?.content
+            ))
+        }
+
+        var outputOnlyItems: [CronRunListItem] = []
+        for (index, output) in outputs.enumerated() {
+            let filename = CronOutputItem.normalizedFilename(output.filename)
+            if let filename, matchedOutputFilenames.contains(filename) {
+                continue
+            }
+
+            let identitySuffix = filename ?? "untitled"
+
+            outputOnlyItems.append(CronRunListItem(
+                id: "output-\(index)-\(identitySuffix)",
+                filename: output.filename,
+                modified: nil,
+                size: nil,
+                usage: nil,
+                outputContent: output.content
+            ))
+        }
+
+        return runItems + outputOnlyItems
+    }
+}
+
+extension CronRunHistoryItem {
+    var displayTitle: String {
+        CronOutputItem.normalizedFilename(filename) ?? String(localized: "Untitled run")
+    }
+}
+
+extension CronOutputItem {
+    var displayTitle: String {
+        Self.normalizedFilename(filename) ?? String(localized: "Untitled output")
+    }
+
+    func matches(run: CronRunHistoryItem) -> Bool {
+        guard let outputFilename = Self.normalizedFilename(filename),
+              let runFilename = Self.normalizedFilename(run.filename)
+        else {
+            return false
+        }
+
+        return outputFilename == runFilename
+    }
+
+    static func normalizedFilename(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
+extension Array where Element == CronOutputItem {
+    func output(matching run: CronRunHistoryItem) -> CronOutputItem? {
+        first { $0.matches(run: run) }
+    }
+}
+
 enum CronJobStatus: Equatable {
     case active
     case paused
