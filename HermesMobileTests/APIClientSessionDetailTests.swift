@@ -1312,7 +1312,7 @@ final class APIClientSessionDetailTests: APIClientTestCase {
             isCompleted: true
         )
 
-        XCTAssertEqual(toolCall.displayName, "Load skill: Kung Fu")
+        XCTAssertEqual(toolCall.displayName, "Load Skill: Kung Fu")
     }
 
     func testToolCallDisplayNameHumanizesNamespacedSkillViewTitle() {
@@ -1323,7 +1323,7 @@ final class APIClientSessionDetailTests: APIClientTestCase {
             isCompleted: true
         )
 
-        XCTAssertEqual(toolCall.displayName, "Load skill: Chris App Design System")
+        XCTAssertEqual(toolCall.displayName, "Load Skill: Chris App Design System")
     }
 
     func testToolCallDisplayNamePreservesKnownSkillAcronyms() {
@@ -1334,10 +1334,10 @@ final class APIClientSessionDetailTests: APIClientTestCase {
             isCompleted: true
         )
 
-        XCTAssertEqual(toolCall.displayName, "Load skill: Zora TTS Hermes Provider")
+        XCTAssertEqual(toolCall.displayName, "Load Skill: Zora TTS Hermes Provider")
     }
 
-    func testToolCallDisplayNameFallsBackToRawToolNameWhenSkillNameIsMissing() {
+    func testToolCallDisplayNameFallsBackToHumanizedToolNameWhenSkillNameIsMissing() {
         let toolCall = ToolCall(
             name: "skill_view",
             preview: nil,
@@ -1345,7 +1345,33 @@ final class APIClientSessionDetailTests: APIClientTestCase {
             isCompleted: true
         )
 
-        XCTAssertEqual(toolCall.displayName, "skill_view")
+        XCTAssertEqual(toolCall.displayName, "Load Skill")
+    }
+
+    func testToolCallDisplayNameUsesDescriptiveToolNames() {
+        XCTAssertEqual(
+            ToolCall(name: "terminal", preview: nil, args: nil, isCompleted: true).displayName,
+            "Run Command"
+        )
+        XCTAssertEqual(
+            ToolCall(name: "search_files", preview: nil, args: nil, isCompleted: true).displayName,
+            "Search Files"
+        )
+        XCTAssertEqual(
+            ToolCall(name: "functions.web_search", preview: nil, args: nil, isCompleted: true).displayName,
+            "Search Web"
+        )
+    }
+
+    func testToolCallDisplayNameTitleCasesUnknownTools() {
+        let toolCall = ToolCall(
+            name: "custom_json_export",
+            preview: nil,
+            args: nil,
+            isCompleted: true
+        )
+
+        XCTAssertEqual(toolCall.displayName, "Custom JSON Export")
     }
 
     func testToolCallDisplayFormatterParsesTerminalJSONOutput() {

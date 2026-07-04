@@ -15,10 +15,12 @@ struct SessionListView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var viewModel: SessionListViewModel
     @State private var createdSession: SessionSummary?
+    @State private var selectedDetailSession: SessionSummary?
     @State private var pendingNewChat: PendingNewChatRoute?
     @State private var selectedUtilityDestination: SessionListUtilityDestination?
     @State private var sessionPendingRename: SessionSummary?
@@ -67,6 +69,46 @@ struct SessionListView: View {
     }
 
     var body: some View {
+        Group {
+            if usesSplitNavigation {
+                splitNavigationShell
+            } else {
+                phoneNavigationStack
+            }
+        }
+        .zoraBrandedScreen()
+        .sessionListSharedLifecycle(
+            viewModel: viewModel,
+            sessionPendingRename: $sessionPendingRename,
+            sessionPendingProjectCreation: $sessionPendingProjectCreation,
+            isPresentingProjectCreation: $isPresentingProjectCreation,
+            projectPendingRename: $projectPendingRename,
+            isPresentingAddServer: $isPresentingAddServer,
+            sessionPendingDeletion: $sessionPendingDeletion,
+            projectPendingDeletion: $projectPendingDeletion,
+            existingProjectCount: viewModel.projects.count,
+            authManager: authManager,
+            modelContext: modelContext,
+            refreshSessionsAndActiveProfile: refreshSessionsAndActiveProfile,
+            remoteSearchTaskID: remoteSearchTaskID,
+            activeSessionMonitorTaskID: activeSessionMonitorTaskID,
+            pendingSharedImport: pendingSharedImport,
+            pendingDeepLinkedSessionID: pendingDeepLinkedSessionID,
+            requestedNewChat: requestedNewChat,
+            monitorActiveSessionRows: monitorActiveSessionRows,
+            openPendingSharedImportIfNeeded: openPendingSharedImportIfNeeded,
+            openPendingDeepLinkedSessionIfNeeded: openPendingDeepLinkedSessionIfNeeded,
+            openRequestedNewChatIfNeeded: openRequestedNewChatIfNeeded,
+            refreshAfterReturningIfNeeded: refreshAfterReturningIfNeeded,
+            renameSession: rename,
+            handleLastError: handleLastError,
+            deleteSession: delete,
+            deleteProject: delete,
+            didCompleteInitialLoad: $didCompleteInitialLoad
+        )
+    }
+
+    private var phoneNavigationStack: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 Color.clear
@@ -96,148 +138,95 @@ struct SessionListView: View {
                 )
             }
             .navigationDestination(item: $selectedUtilityDestination) { destination in
-                switch destination {
-                case .settings(let scrollTo):
-                    SettingsView(
-                        authManager: authManager,
-                        server: server,
-                        initialScrollTarget: scrollTo,
-                        onAPIError: authManager.handleAPIError
-                    )
-                case .tasks:
-                    TasksView(server: server, onAPIError: authManager.handleAPIError)
-                }
+                utilityDestinationView(destination)
             }
-            .sheet(item: $sessionPendingRename) { session in
-                SessionRenameSheet(
-                    initialTitle: SessionRowView.displayTitle(for: session),
-                    isSaving: viewModel.isRenamingSession
-                ) {
-                    sessionPendingRename = nil
-                } onSave: { title in
-                    Task {
-                        guard let session = sessionPendingRename else { return }
-
-                        let didRename = await rename(session, to: title)
-                        if didRename {
-                            sessionPendingRename = nil
-                        }
-                    }
-                }
-                .presentationDetents([.height(180), .medium])
-            }
-            .sheet(item: $sessionPendingProjectCreation) { session in
-                ProjectCreationSheet(
-                    existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession
-                ) {
-                    sessionPendingProjectCreation = nil
-                } onSave: { name, color in
-                    Task {
-                        let didMove = await viewModel.createProject(
-                            named: name,
-                            color: color,
-                            moving: session,
-                            modelContext: modelContext
-                        )
-                        handleLastError()
-
-                        if didMove {
-                            sessionPendingProjectCreation = nil
-                        }
-                    }
-                }
-                .presentationDetents([.medium])
-            }
-            .sheet(isPresented: $isPresentingProjectCreation) {
-                ProjectCreationSheet(
-                    existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject
-                ) {
-                    isPresentingProjectCreation = false
-                } onSave: { name, color in
-                    Task {
-                        let didCreate = await viewModel.createEmptyProject(
-                            named: name,
-                            color: color,
-                            modelContext: modelContext
-                        )
-                        handleLastError()
-
-                        if didCreate {
-                            isPresentingProjectCreation = false
-                        }
-                    }
-                }
-                .presentationDetents([.medium])
-            }
-            .sheet(item: $projectPendingRename) { project in
-                ProjectRenameSheet(
-                    project: project,
-                    isSaving: viewModel.isRenamingProject
-                ) {
-                    projectPendingRename = nil
-                } onSave: { name, color in
-                    Task {
-                        let didRename = await viewModel.rename(project, named: name, color: color)
-                        handleLastError()
-
-                        if didRename {
-                            projectPendingRename = nil
-                        }
-                    }
-                }
-                .presentationDetents([.medium])
-            }
-            .sheet(isPresented: $isPresentingAddServer) {
-                // Reuse #17's add-server flow directly as a power-user shortcut.
-                // On success `addServer` switches the active server, which
-                // rebuilds this stack via ContentView's `.id(server)` (#283).
-                AddServerView(authManager: authManager)
-            }
-            .task {
-                await refreshSessionsAndActiveProfile()
-                didCompleteInitialLoad = true
-            }
-            .task(id: remoteSearchTaskID) {
-                await viewModel.searchSessions(query: searchText, content: true, depth: 5)
-            }
-            .task(id: activeSessionMonitorTaskID) {
-                await monitorActiveSessionRows()
-            }
-            .onAppear {
-                openPendingSharedImportIfNeeded()
-                openPendingDeepLinkedSessionIfNeeded()
-                openRequestedNewChatIfNeeded()
-                refreshAfterReturningIfNeeded()
-            }
-            .onChange(of: pendingSharedImport) {
-                openPendingSharedImportIfNeeded()
-            }
-            .onChange(of: pendingDeepLinkedSessionID) {
-                openPendingDeepLinkedSessionIfNeeded()
-            }
-            .onChange(of: requestedNewChat) {
-                openRequestedNewChatIfNeeded()
-            }
-            .refreshable {
-                await refreshSessionsAndActiveProfile()
-            }
-            .modifier(
-                SessionActionConfirmations(
-                    viewModel: viewModel,
-                    sessionPendingDeletion: $sessionPendingDeletion,
-                    projectPendingDeletion: $projectPendingDeletion,
-                    deleteSession: { session in
-                        Task { await delete(session) }
-                    },
-                    deleteProject: { project in
-                        Task { await delete(project) }
-                    }
-                )
-            )
         }
-        .zoraBrandedScreen()
+    }
+
+    private var splitNavigationShell: some View {
+        NavigationSplitView {
+            splitSidebarPanel
+        } detail: {
+            splitDetail
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    private var splitSidebarPanel: some View {
+        let shape = RoundedRectangle(cornerRadius: ZoraRadius.sheet, style: .continuous)
+
+        return ZStack(alignment: .bottomTrailing) {
+            content
+
+            if !isSearchingSessions {
+                newSessionButtonOverlay
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .clipShape(shape)
+        .background {
+            shape
+                .fill(ZoraSurfaceLevel.chrome.fill(reduceTransparency: reduceTransparency))
+                .overlay(
+                    shape
+                        .stroke(ZoraBrand.surfaceHairlineStrong, lineWidth: 0.85)
+                )
+                .shadow(color: Color.black.opacity(reduceTransparency ? 0.12 : 0.24), radius: 28, y: 18)
+        }
+        .padding(.leading, 18)
+        .padding(.vertical, 18)
+        .frame(minWidth: 360, idealWidth: 420, maxWidth: 460, maxHeight: .infinity, alignment: .leading)
+        .navigationSplitViewColumnWidth(min: 360, ideal: 420, max: 480)
+    }
+
+    @ViewBuilder
+    private var splitDetail: some View {
+        if let route = pendingNewChat {
+            PendingNewChatView(
+                initialDraft: route.initialDraft,
+                initialAttachments: route.initialAttachments,
+                autoStartsVoiceInput: route.autoStartsVoiceInput,
+                profileName: route.profileName,
+                modelName: route.modelName,
+                modelProviderName: route.modelProviderName,
+                server: server,
+                viewModel: viewModel,
+                onAPIError: authManager.handleAPIError
+            )
+            .id(route.id)
+        } else if let destination = selectedUtilityDestination {
+            utilityDestinationView(destination)
+        } else if let session = selectedDetailSession {
+            ChatView(session: session, server: server, onAPIError: authManager.handleAPIError)
+                .id(session.id)
+        } else {
+            splitEmptyDetail
+        }
+    }
+
+    private var splitEmptyDetail: some View {
+        ZoraUnavailableStateView(
+            title: String(localized: "Select a Session"),
+            systemImage: "sidebar.left",
+            message: String(localized: "Choose a conversation from the floating panel, or start a new chat.")
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.clear)
+    }
+
+    @ViewBuilder
+    private func utilityDestinationView(_ destination: SessionListUtilityDestination) -> some View {
+        switch destination {
+        case .settings(let scrollTo):
+            SettingsView(
+                authManager: authManager,
+                server: server,
+                initialScrollTarget: scrollTo,
+                onAPIError: authManager.handleAPIError
+            )
+        case .tasks:
+            TasksView(server: server, onAPIError: authManager.handleAPIError)
+        }
     }
 
     private var content: some View {
@@ -262,7 +251,7 @@ struct SessionListView: View {
                     projectPendingDeletion: $projectPendingDeletion,
                     projectPendingRename: $projectPendingRename,
                     openDestination: { destination in
-                        selectedUtilityDestination = destination
+                        openUtilityDestination(destination)
                     },
                     switchActiveProfile: { profile in
                         Task { await switchActiveProfile(profile) }
@@ -281,6 +270,7 @@ struct SessionListView: View {
                 isSearchActive: isSearchingSessions,
                 showsMessageCount: showsSessionMessageCount,
                 showsWorkspace: showsSessionWorkspace,
+                selectedSessionID: usesSplitNavigation ? selectedDetailSession?.id : nil,
                 actions: sessionRowActions
             )
 
@@ -400,7 +390,7 @@ struct SessionListView: View {
             if searchChromeIsExpanded {
                 closeSearch()
             } else {
-                selectedUtilityDestination = .settings(nil)
+                openUtilityDestination(.settings(nil))
             }
         } label: {
             ZStack {
@@ -448,7 +438,7 @@ struct SessionListView: View {
                         authManager.switchActiveServer(to: account)
                     },
                     addServer: { isPresentingAddServer = true },
-                    manageServers: { selectedUtilityDestination = .settings(.servers) }
+                    manageServers: { openUtilityDestination(.settings(.servers)) }
                 )
             }
         }
@@ -456,7 +446,7 @@ struct SessionListView: View {
 
     private var newSessionButton: some View {
         HapticButton(feedbackStyle: .medium) {
-            pendingNewChat = PendingNewChatRoute()
+            openPendingNewChat(PendingNewChatRoute())
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.pencil")
@@ -498,6 +488,11 @@ struct SessionListView: View {
         .padding(.trailing, ZoraSpacing.screenInset)
         .padding(.bottom, ZoraSpacing.section - 2)
         .zoraAdaptiveContentFrame(.navigationList)
+    }
+
+
+    private var usesSplitNavigation: Bool {
+        AppFormFactor.current(horizontalSizeClass: horizontalSizeClass) != .phone
     }
 
     private var visibleSessions: [SessionSummary] {
@@ -637,7 +632,7 @@ struct SessionListView: View {
                 Task { await refreshSessionsAndActiveProfile() }
             },
             open: { session in
-                createdSession = session
+                openSession(session)
             },
             togglePinned: { session in
                 Task { await togglePinned(session) }
@@ -664,6 +659,31 @@ struct SessionListView: View {
                 Task { await viewModel.loadProjects() }
             }
         )
+    }
+
+    private func openSession(_ session: SessionSummary) {
+        pendingNewChat = nil
+        selectedUtilityDestination = nil
+
+        if usesSplitNavigation {
+            selectedDetailSession = session
+        } else {
+            createdSession = session
+        }
+    }
+
+    private func openPendingNewChat(_ route: PendingNewChatRoute) {
+        createdSession = nil
+        selectedDetailSession = nil
+        selectedUtilityDestination = nil
+        pendingNewChat = route
+    }
+
+    private func openUtilityDestination(_ destination: SessionListUtilityDestination) {
+        createdSession = nil
+        selectedDetailSession = nil
+        pendingNewChat = nil
+        selectedUtilityDestination = destination
     }
 
     private func refreshSessionsAndActiveProfile() async {
@@ -817,7 +837,7 @@ struct SessionListView: View {
         handleLastError()
 
         if let duplicatedSession {
-            createdSession = duplicatedSession
+            openSession(duplicatedSession)
         }
     }
 
@@ -859,10 +879,10 @@ struct SessionListView: View {
             return
         }
 
-        pendingNewChat = PendingNewChatRoute(
+        openPendingNewChat(PendingNewChatRoute(
             initialDraft: draft,
             initialAttachments: sharedImport.attachments
-        )
+        ))
     }
 
     private func openPendingDeepLinkedSessionIfNeeded() {
@@ -874,13 +894,13 @@ struct SessionListView: View {
 
         pendingDeepLinkedSessionID = nil
         if let loadedSession = viewModel.sessions.first(where: { $0.sessionId == sessionID }) {
-            createdSession = loadedSession
+            openSession(loadedSession)
             return
         }
 
         Task {
             if let session = await viewModel.loadSessionForDeepLink(id: sessionID, modelContext: modelContext) {
-                createdSession = session
+                openSession(session)
             }
             handleLastError()
         }
@@ -893,15 +913,242 @@ struct SessionListView: View {
     private func openRequestedNewChatIfNeeded() {
         guard let request = requestedNewChat else { return }
         requestedNewChat = nil
-        pendingNewChat = PendingNewChatRoute(
+        openPendingNewChat(PendingNewChatRoute(
             initialDraft: request.initialDraft,
             autoStartsVoiceInput: request.autoStartsVoiceInput,
             profileName: request.profileName,
             modelName: request.modelName,
             modelProviderName: request.modelProviderName
-        )
+        ))
     }
 
+}
+
+private extension View {
+    func sessionListSharedLifecycle(
+        viewModel: SessionListViewModel,
+        sessionPendingRename: Binding<SessionSummary?>,
+        sessionPendingProjectCreation: Binding<SessionSummary?>,
+        isPresentingProjectCreation: Binding<Bool>,
+        projectPendingRename: Binding<ProjectSummary?>,
+        isPresentingAddServer: Binding<Bool>,
+        sessionPendingDeletion: Binding<SessionSummary?>,
+        projectPendingDeletion: Binding<ProjectSummary?>,
+        existingProjectCount: Int,
+        authManager: AuthManager,
+        modelContext: ModelContext,
+        refreshSessionsAndActiveProfile: @escaping () async -> Void,
+        remoteSearchTaskID: SessionSearchTaskID,
+        activeSessionMonitorTaskID: ActiveSessionMonitorTaskID,
+        pendingSharedImport: SharedImport?,
+        pendingDeepLinkedSessionID: String?,
+        requestedNewChat: NewChatRequest?,
+        monitorActiveSessionRows: @escaping () async -> Void,
+        openPendingSharedImportIfNeeded: @escaping () -> Void,
+        openPendingDeepLinkedSessionIfNeeded: @escaping () -> Void,
+        openRequestedNewChatIfNeeded: @escaping () -> Void,
+        refreshAfterReturningIfNeeded: @escaping () -> Void,
+        renameSession: @escaping (SessionSummary, String) async -> Bool,
+        handleLastError: @escaping () -> Void,
+        deleteSession: @escaping (SessionSummary) async -> Void,
+        deleteProject: @escaping (ProjectSummary) async -> Void,
+        didCompleteInitialLoad: Binding<Bool>
+    ) -> some View {
+        modifier(
+            SessionListSharedLifecycleModifier(
+                viewModel: viewModel,
+                sessionPendingRename: sessionPendingRename,
+                sessionPendingProjectCreation: sessionPendingProjectCreation,
+                isPresentingProjectCreation: isPresentingProjectCreation,
+                projectPendingRename: projectPendingRename,
+                isPresentingAddServer: isPresentingAddServer,
+                sessionPendingDeletion: sessionPendingDeletion,
+                projectPendingDeletion: projectPendingDeletion,
+                existingProjectCount: existingProjectCount,
+                authManager: authManager,
+                modelContext: modelContext,
+                refreshSessionsAndActiveProfile: refreshSessionsAndActiveProfile,
+                remoteSearchTaskID: remoteSearchTaskID,
+                activeSessionMonitorTaskID: activeSessionMonitorTaskID,
+                pendingSharedImport: pendingSharedImport,
+                pendingDeepLinkedSessionID: pendingDeepLinkedSessionID,
+                requestedNewChat: requestedNewChat,
+                monitorActiveSessionRows: monitorActiveSessionRows,
+                openPendingSharedImportIfNeeded: openPendingSharedImportIfNeeded,
+                openPendingDeepLinkedSessionIfNeeded: openPendingDeepLinkedSessionIfNeeded,
+                openRequestedNewChatIfNeeded: openRequestedNewChatIfNeeded,
+                refreshAfterReturningIfNeeded: refreshAfterReturningIfNeeded,
+                renameSession: renameSession,
+                handleLastError: handleLastError,
+                deleteSession: deleteSession,
+                deleteProject: deleteProject,
+                didCompleteInitialLoad: didCompleteInitialLoad
+            )
+        )
+    }
+}
+
+private struct SessionListSharedLifecycleModifier: ViewModifier {
+    let viewModel: SessionListViewModel
+    @Binding var sessionPendingRename: SessionSummary?
+    @Binding var sessionPendingProjectCreation: SessionSummary?
+    @Binding var isPresentingProjectCreation: Bool
+    @Binding var projectPendingRename: ProjectSummary?
+    @Binding var isPresentingAddServer: Bool
+    @Binding var sessionPendingDeletion: SessionSummary?
+    @Binding var projectPendingDeletion: ProjectSummary?
+
+    let existingProjectCount: Int
+    let authManager: AuthManager
+    let modelContext: ModelContext
+    let refreshSessionsAndActiveProfile: () async -> Void
+    let remoteSearchTaskID: SessionSearchTaskID
+    let activeSessionMonitorTaskID: ActiveSessionMonitorTaskID
+    let pendingSharedImport: SharedImport?
+    let pendingDeepLinkedSessionID: String?
+    let requestedNewChat: NewChatRequest?
+    let monitorActiveSessionRows: () async -> Void
+    let openPendingSharedImportIfNeeded: () -> Void
+    let openPendingDeepLinkedSessionIfNeeded: () -> Void
+    let openRequestedNewChatIfNeeded: () -> Void
+    let refreshAfterReturningIfNeeded: () -> Void
+    let renameSession: (SessionSummary, String) async -> Bool
+    let handleLastError: () -> Void
+    let deleteSession: (SessionSummary) async -> Void
+    let deleteProject: (ProjectSummary) async -> Void
+    @Binding var didCompleteInitialLoad: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $sessionPendingRename) { session in
+                SessionRenameSheet(
+                    initialTitle: SessionRowView.displayTitle(for: session),
+                    isSaving: viewModel.isRenamingSession
+                ) {
+                    sessionPendingRename = nil
+                } onSave: { title in
+                    Task {
+                        guard let session = sessionPendingRename else { return }
+
+                        let didRename = await renameSession(session, title)
+                        if didRename {
+                            sessionPendingRename = nil
+                        }
+                    }
+                }
+                .presentationDetents([.height(180), .medium])
+            }
+            .sheet(item: $sessionPendingProjectCreation) { session in
+                ProjectCreationSheet(
+                    existingProjectCount: existingProjectCount,
+                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession
+                ) {
+                    sessionPendingProjectCreation = nil
+                } onSave: { name, color in
+                    Task {
+                        let didMove = await viewModel.createProject(
+                            named: name,
+                            color: color,
+                            moving: session,
+                            modelContext: modelContext
+                        )
+                        handleLastError()
+
+                        if didMove {
+                            sessionPendingProjectCreation = nil
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $isPresentingProjectCreation) {
+                ProjectCreationSheet(
+                    existingProjectCount: existingProjectCount,
+                    isSaving: viewModel.isCreatingProject
+                ) {
+                    isPresentingProjectCreation = false
+                } onSave: { name, color in
+                    Task {
+                        let didCreate = await viewModel.createEmptyProject(
+                            named: name,
+                            color: color,
+                            modelContext: modelContext
+                        )
+                        handleLastError()
+
+                        if didCreate {
+                            isPresentingProjectCreation = false
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+            .sheet(item: $projectPendingRename) { project in
+                ProjectRenameSheet(
+                    project: project,
+                    isSaving: viewModel.isRenamingProject
+                ) {
+                    projectPendingRename = nil
+                } onSave: { name, color in
+                    Task {
+                        let didRename = await viewModel.rename(project, named: name, color: color)
+                        handleLastError()
+
+                        if didRename {
+                            projectPendingRename = nil
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $isPresentingAddServer) {
+                // Reuse #17's add-server flow directly as a power-user shortcut.
+                // On success `addServer` switches the active server, which
+                // rebuilds this stack via ContentView's `.id(server)` (#283).
+                AddServerView(authManager: authManager)
+            }
+            .task {
+                await refreshSessionsAndActiveProfile()
+                didCompleteInitialLoad = true
+            }
+            .task(id: remoteSearchTaskID) {
+                await viewModel.searchSessions(query: remoteSearchTaskID.query, content: true, depth: 5)
+            }
+            .task(id: activeSessionMonitorTaskID) {
+                await monitorActiveSessionRows()
+            }
+            .onAppear {
+                openPendingSharedImportIfNeeded()
+                openPendingDeepLinkedSessionIfNeeded()
+                openRequestedNewChatIfNeeded()
+                refreshAfterReturningIfNeeded()
+            }
+            .onChange(of: pendingSharedImport) {
+                openPendingSharedImportIfNeeded()
+            }
+            .onChange(of: pendingDeepLinkedSessionID) {
+                openPendingDeepLinkedSessionIfNeeded()
+            }
+            .onChange(of: requestedNewChat) {
+                openRequestedNewChatIfNeeded()
+            }
+            .refreshable {
+                await refreshSessionsAndActiveProfile()
+            }
+            .modifier(
+                SessionActionConfirmations(
+                    viewModel: viewModel,
+                    sessionPendingDeletion: $sessionPendingDeletion,
+                    projectPendingDeletion: $projectPendingDeletion,
+                    deleteSession: { session in
+                        Task { await deleteSession(session) }
+                    },
+                    deleteProject: { project in
+                        Task { await deleteProject(project) }
+                    }
+                )
+            )
+    }
 }
 
 /// A request from `ContentView` to open the New Chat composer. Carries an optional initial

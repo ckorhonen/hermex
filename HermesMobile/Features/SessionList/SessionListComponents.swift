@@ -288,6 +288,7 @@ struct SessionListRowsSection: View {
     let isSearchActive: Bool
     let showsMessageCount: Bool
     let showsWorkspace: Bool
+    var selectedSessionID: String?
     let actions: SessionListRowActions
 
     var body: some View {
@@ -388,7 +389,10 @@ struct SessionListRowsSection: View {
     }
 
     private func sessionListRow(for session: SessionSummary) -> some View {
-        Button {
+        let isSelected = selectedSessionID == session.id
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
+        return Button {
             actions.open(session)
         } label: {
             SessionRowView(
@@ -397,6 +401,19 @@ struct SessionListRowsSection: View {
                 showsWorkspace: showsWorkspace,
                 isViewingCachedData: viewModel.isViewingCachedData
             )
+            .background {
+                if isSelected {
+                    shape
+                        .fill(ZoraBrand.foreground.opacity(0.12))
+                }
+            }
+            .overlay {
+                if isSelected {
+                    shape
+                        .stroke(ZoraBrand.foreground.opacity(0.28), lineWidth: 0.85)
+                        .allowsHitTesting(false)
+                }
+            }
         }
         .buttonStyle(.plain)
         .transition(SessionListMotion.sessionRowTransition(reduceMotion: reduceMotion))

@@ -36,17 +36,70 @@ struct ToolCall: Identifiable, Equatable {
             return String(localized: "Tool")
         }
 
-        if Self.isSkillViewTool(trimmedName),
+        let canonicalName = Self.canonicalToolName(trimmedName)
+        if Self.isSkillViewTool(canonicalName),
            let skillName = Self.skillName(from: args) {
-            return String(localized: "Load skill: \(Self.humanizedSkillName(skillName))")
+            return String(localized: "Load Skill: \(Self.humanizedSkillName(skillName))")
         }
 
-        return trimmedName
+        return Self.humanizedToolName(canonicalName)
+    }
+
+    private static func canonicalToolName(_ name: String) -> String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let namespaceSeparated = trimmedName.split(separator: ".").last.map(String.init) ?? trimmedName
+        return namespaceSeparated.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private static func isSkillViewTool(_ name: String) -> Bool {
-        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalizedName == "skill_view" || normalizedName.hasSuffix(".skill_view")
+        name == "skill_view"
+    }
+
+    private static func humanizedToolName(_ name: String) -> String {
+        let preferredNames = [
+            "browser_back": String(localized: "Go Back"),
+            "browser_click": String(localized: "Click Page Element"),
+            "browser_console": String(localized: "Inspect Browser Console"),
+            "browser_get_images": String(localized: "Find Page Images"),
+            "browser_navigate": String(localized: "Open Web Page"),
+            "browser_press": String(localized: "Press Browser Key"),
+            "browser_scroll": String(localized: "Scroll Page"),
+            "browser_snapshot": String(localized: "Read Page Structure"),
+            "browser_type": String(localized: "Type Into Page"),
+            "browser_vision": String(localized: "Inspect Page Screenshot"),
+            "clarify": String(localized: "Ask Follow-up"),
+            "cronjob": String(localized: "Manage Scheduled Job"),
+            "delegate_task": String(localized: "Delegate Task"),
+            "execute_code": String(localized: "Run Python"),
+            "image_generate": String(localized: "Generate Image"),
+            "memory": String(localized: "Update Memory"),
+            "patch": String(localized: "Edit File"),
+            "process": String(localized: "Manage Background Process"),
+            "project_create": String(localized: "Create Project"),
+            "project_list": String(localized: "List Projects"),
+            "project_switch": String(localized: "Switch Project"),
+            "read_file": String(localized: "Read File"),
+            "read_terminal": String(localized: "Read Terminal"),
+            "search_files": String(localized: "Search Files"),
+            "session_search": String(localized: "Search Past Chats"),
+            "skill_manage": String(localized: "Manage Skill"),
+            "skill_view": String(localized: "Load Skill"),
+            "skills_list": String(localized: "List Skills"),
+            "terminal": String(localized: "Run Command"),
+            "text_to_speech": String(localized: "Create Audio"),
+            "todo": String(localized: "Update Task List"),
+            "video_analyze": String(localized: "Analyze Video"),
+            "vision_analyze": String(localized: "Analyze Image"),
+            "web_extract": String(localized: "Read Web Page"),
+            "web_search": String(localized: "Search Web"),
+            "write_file": String(localized: "Write File")
+        ]
+
+        if let preferredName = preferredNames[name] {
+            return preferredName
+        }
+
+        return humanizedName(name)
     }
 
     private static func skillName(from args: [String: JSONValue]?) -> String? {
@@ -63,9 +116,14 @@ struct ToolCall: Identifiable, Equatable {
     }
 
     private static func humanizedSkillName(_ value: String) -> String {
+        humanizedName(value)
+    }
+
+    private static func humanizedName(_ value: String) -> String {
         let normalized = value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ":", with: " ")
+            .replacingOccurrences(of: ".", with: " ")
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
 
@@ -73,21 +131,35 @@ struct ToolCall: Identifiable, Equatable {
         guard !words.isEmpty else { return value }
 
         return words
-            .map(Self.humanizedSkillWord)
+            .map(Self.humanizedWord)
             .joined(separator: " ")
     }
 
-    private static func humanizedSkillWord(_ word: String) -> String {
+    private static func humanizedWord(_ word: String) -> String {
         let lowercasedWord = word.lowercased()
         let preferredAcronyms = [
             "api": "API",
+            "cli": "CLI",
+            "cpu": "CPU",
+            "csv": "CSV",
+            "dns": "DNS",
+            "gpu": "GPU",
+            "html": "HTML",
+            "http": "HTTP",
             "ios": "iOS",
+            "json": "JSON",
             "llm": "LLM",
             "mcp": "MCP",
+            "pdf": "PDF",
+            "pr": "PR",
             "qa": "QA",
             "seo": "SEO",
+            "sms": "SMS",
+            "sql": "SQL",
             "tts": "TTS",
-            "ui": "UI"
+            "ui": "UI",
+            "url": "URL",
+            "xml": "XML"
         ]
 
         if let acronym = preferredAcronyms[lowercasedWord] {

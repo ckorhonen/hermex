@@ -1273,20 +1273,35 @@ private struct ChatMarkdownTable: View {
     private let cornerRadius: CGFloat = 18
 
     var body: some View {
-        ScrollView(.horizontal) {
-            label
-                .fixedSize(horizontal: true, vertical: true)
-                .markdownTableBorderStyle(.init(color: ZoraBrand.surfaceHairline))
-                .markdownTableBackgroundStyle(
-                    .alternatingRows(ZoraBrand.codeBlockFill, ZoraBrand.subtleFill)
-                )
+        ViewThatFits(in: .horizontal) {
+            tableContent
+                .tableContainerChrome(cornerRadius: cornerRadius)
+
+            ScrollView(.horizontal) {
+                tableContent
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .tableContainerChrome(cornerRadius: cornerRadius)
         }
-        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(ZoraBrand.codeBlockStroke, lineWidth: 0.5)
-        )
+    }
+
+    private var tableContent: some View {
+        label
+            .fixedSize(horizontal: true, vertical: true)
+            .markdownTableBorderStyle(.init(color: ZoraBrand.surfaceHairline))
+            .markdownTableBackgroundStyle(
+                .alternatingRows(ZoraBrand.codeBlockFill, ZoraBrand.subtleFill)
+            )
+    }
+}
+
+private extension View {
+    func tableContainerChrome(cornerRadius: CGFloat) -> some View {
+        clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(ZoraBrand.codeBlockStroke, lineWidth: 0.5)
+            )
     }
 }
 
