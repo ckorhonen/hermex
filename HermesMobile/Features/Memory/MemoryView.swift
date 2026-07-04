@@ -53,57 +53,46 @@ struct MemoryView: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading && !viewModel.hasLoaded {
-            ProgressView("Loading memory...")
+            ZoraLoadingStateView(title: "Loading memory...")
         } else if let errorMessage = viewModel.errorMessage, !viewModel.hasLoaded {
-            ContentUnavailableView {
-                Label("Could Not Load Memory", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await loadMemory() }
-                }
+            ZoraUnavailableStateView(
+                title: "Could Not Load Memory",
+                systemImage: "exclamationmark.triangle",
+                message: errorMessage,
+                actionTitle: "Try Again"
+            ) {
+                Task { await loadMemory() }
             }
         } else if !viewModel.hasLoaded {
-            ProgressView("Loading memory...")
+            ZoraLoadingStateView(title: "Loading memory...")
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    ForEach(MemorySection.allCases) { section in
-                        VStack(alignment: .leading, spacing: 8) {
-                            MemorySectionHeader(
-                                section: section,
-                                modifiedAt: viewModel.modifiedAt(for: section),
-                                isEditingDisabled: viewModel.isSaving
-                            ) {
-                                viewModel.clearActionError()
-                                editingSection = section
-                            }
+            ZoraScrollContent(spacing: 22) {
+                ForEach(MemorySection.allCases) { section in
+                    VStack(alignment: .leading, spacing: 8) {
+                        MemorySectionHeader(
+                            section: section,
+                            modifiedAt: viewModel.modifiedAt(for: section),
+                            isEditingDisabled: viewModel.isSaving
+                        ) {
+                            viewModel.clearActionError()
+                            editingSection = section
+                        }
 
-                            MemorySectionContent(
-                                section: section,
-                                content: viewModel.content(for: section)
-                            )
-                            .padding(.vertical, 10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .overlay(alignment: .bottom) {
-                                Rectangle()
-                                    .fill(ZoraBrand.listDivider)
-                                    .frame(height: 0.65)
-                                    .allowsHitTesting(false)
-                            }
+                        MemorySectionContent(
+                            section: section,
+                            content: viewModel.content(for: section)
+                        )
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .bottom) {
+                            ZoraDivider()
                         }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 32)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable {
                 await loadMemory()
             }
-            .background(Color.clear)
         }
     }
 
@@ -124,10 +113,7 @@ private struct MemorySectionHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Label(section.title, systemImage: section.systemImage)
-                .font(AppFont.caption(weight: .semibold))
-                .textCase(.uppercase)
-                .foregroundStyle(ZoraBrand.secondaryForeground)
+            ZoraSectionHeader(section.title, systemImage: section.systemImage, horizontalPadding: 0)
 
             Spacer()
 
@@ -204,7 +190,7 @@ private struct MemoryEditSheet: View {
                     Section {
                         Text(errorMessage)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(ZoraBrand.danger)
                     }
                 }
             }
