@@ -35,7 +35,67 @@ struct ToolCall: Identifiable, Equatable {
         guard let trimmedName, !trimmedName.isEmpty else {
             return String(localized: "Tool")
         }
+
+        if Self.isSkillViewTool(trimmedName),
+           let skillName = Self.skillName(from: args) {
+            return String(localized: "Load skill: \(Self.humanizedSkillName(skillName))")
+        }
+
         return trimmedName
+    }
+
+    private static func isSkillViewTool(_ name: String) -> Bool {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedName == "skill_view" || normalizedName.hasSuffix(".skill_view")
+    }
+
+    private static func skillName(from args: [String: JSONValue]?) -> String? {
+        let value = args?["name"]?.stringValue
+            ?? args?["skill"]?.stringValue
+            ?? args?["skill_name"]?.stringValue
+
+        return nonEmpty(value)
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    private static func humanizedSkillName(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ":", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+
+        let words = normalized.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard !words.isEmpty else { return value }
+
+        return words
+            .map(Self.humanizedSkillWord)
+            .joined(separator: " ")
+    }
+
+    private static func humanizedSkillWord(_ word: String) -> String {
+        let lowercasedWord = word.lowercased()
+        let preferredAcronyms = [
+            "api": "API",
+            "ios": "iOS",
+            "llm": "LLM",
+            "mcp": "MCP",
+            "qa": "QA",
+            "seo": "SEO",
+            "tts": "TTS",
+            "ui": "UI"
+        ]
+
+        if let acronym = preferredAcronyms[lowercasedWord] {
+            return acronym
+        }
+
+        guard word.uppercased() != word else { return word }
+        return String(word.prefix(1)).uppercased() + String(word.dropFirst()).lowercased()
     }
 }
 
