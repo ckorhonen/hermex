@@ -71,6 +71,20 @@ enum CacheStore {
             }
         )
         let staleSessions = try context.fetch(descriptor).filter { !freshKeys.contains($0.cacheKey) }
+        if !staleSessions.isEmpty {
+            // Also drop the stale sessions' messages so they don't linger as
+            // unreachable orphans squatting the message eviction budget.
+            let staleSessionIDs = staleSessions.map(\.sessionID)
+            let orphanDescriptor = FetchDescriptor<CachedMessage>(
+                predicate: #Predicate { cachedMessage in
+                    cachedMessage.serverURLString == serverURLString
+                        && staleSessionIDs.contains(cachedMessage.sessionID)
+                }
+            )
+            for orphanedMessage in try context.fetch(orphanDescriptor) {
+                context.delete(orphanedMessage)
+            }
+        }
         for staleSession in staleSessions {
             context.delete(staleSession)
         }
@@ -114,43 +128,39 @@ enum CacheStore {
         cachedAt: Date = Date()
     ) throws {
         let serverURLString = serverURL.absoluteString
-        let freshKeys = Set(messages.enumerated().map { offset, message in
-            CachedMessage.cacheKey(
-                serverURLString: serverURLString,
-                sessionID: sessionID,
-                message: message,
-                sortIndex: offset
-            )
-        })
+        let batchKeys = messageCacheKeys(for: messages, serverURLString: serverURLString, sessionID: sessionID)
+        let freshKeys = Set(batchKeys)
 
-        for (offset, message) in messages.enumerated() {
-            let cacheKey = CachedMessage.cacheKey(
-                serverURLString: serverURLString,
-                sessionID: sessionID,
-                message: message,
-                sortIndex: offset
-            )
-            if let cachedMessage = try cachedMessage(cacheKey: cacheKey, in: context) {
-                cachedMessage.apply(message, sortIndex: offset, cachedAt: cachedAt)
-            } else {
-                context.insert(CachedMessage(
-                    serverURLString: serverURLString,
-                    sessionID: sessionID,
-                    message: message,
-                    sortIndex: offset,
-                    cachedAt: cachedAt
-                ))
-            }
-        }
-
+        // One scoped fetch for the whole batch instead of one fetch per
+        // message; upserts and stale-removal both work off this snapshot.
         let descriptor = FetchDescriptor<CachedMessage>(
             predicate: #Predicate { cachedMessage in
                 cachedMessage.serverURLString == serverURLString
                     && cachedMessage.sessionID == sessionID
             }
         )
-        let staleMessages = try context.fetch(descriptor).filter { !freshKeys.contains($0.cacheKey) }
-        for staleMessage in staleMessages {
+        let existingMessages = try context.fetch(descriptor)
+        var messagesByKey = Dictionary(existingMessages.map { ($0.cacheKey, $0) }) { first, _ in first }
+
+        for (offset, message) in messages.enumerated() {
+            let cacheKey = batchKeys[offset]
+            if let cachedMessage = messagesByKey[cacheKey] {
+                cachedMessage.apply(message, sortIndex: offset, cachedAt: cachedAt)
+            } else {
+                let cachedMessage = CachedMessage(
+                    serverURLString: serverURLString,
+                    sessionID: sessionID,
+                    message: message,
+                    sortIndex: offset,
+                    cacheKey: cacheKey,
+                    cachedAt: cachedAt
+                )
+                context.insert(cachedMessage)
+                messagesByKey[cacheKey] = cachedMessage
+            }
+        }
+
+        for staleMessage in existingMessages where !freshKeys.contains(staleMessage.cacheKey) {
             context.delete(staleMessage)
         }
 
@@ -201,8 +211,27 @@ enum CacheStore {
         try context.save()
     }
 
+    /// Timestamp of the last completed maintenance pass. Housekeeping is
+    /// debounced to at most one pass per `CachePolicy.maintenanceInterval`
+    /// so expiry/eviction scans don't run on every cache write. Internal so
+    /// tests can reset it to force the next write to run maintenance.
+    @MainActor
+    static var lastMaintenanceRun: Date?
+
     @MainActor
     private static func performMaintenance(in context: ModelContext, now: Date) throws {
+        if let lastRun = lastMaintenanceRun,
+           abs(now.timeIntervalSince(lastRun)) < CachePolicy.maintenanceInterval {
+            return
+        }
+        lastMaintenanceRun = now
+
+        // `fetchCount` only consults the persistent store, so flush pending
+        // inserts/deletes first to keep the eviction math accurate.
+        if context.hasChanges {
+            try context.save()
+        }
+
         try deleteExpiredSessions(in: context, now: now)
         try deleteExpiredMessages(in: context, now: now)
         try evictOldestMessagesIfNeeded(in: context)
@@ -210,44 +239,42 @@ enum CacheStore {
 
     @MainActor
     private static func deleteExpiredSessions(in context: ModelContext, now: Date) throws {
-        let descriptor = FetchDescriptor<CachedSession>()
-        let expiredSessions = try context.fetch(descriptor).filter { $0.expiresAt <= now }
-        for session in expiredSessions {
+        let descriptor = FetchDescriptor<CachedSession>(
+            predicate: #Predicate { cachedSession in
+                cachedSession.expiresAt <= now
+            }
+        )
+        for session in try context.fetch(descriptor) {
             context.delete(session)
         }
     }
 
     @MainActor
     private static func deleteExpiredMessages(in context: ModelContext, now: Date) throws {
-        let descriptor = FetchDescriptor<CachedMessage>()
-        let expiredMessages = try context.fetch(descriptor).filter { $0.expiresAt <= now }
-        for message in expiredMessages {
+        let descriptor = FetchDescriptor<CachedMessage>(
+            predicate: #Predicate { cachedMessage in
+                cachedMessage.expiresAt <= now
+            }
+        )
+        for message in try context.fetch(descriptor) {
             context.delete(message)
         }
     }
 
     @MainActor
     private static func evictOldestMessagesIfNeeded(in context: ModelContext) throws {
-        let descriptor = FetchDescriptor<CachedMessage>()
-        let messages = try context.fetch(descriptor)
-        let overflowCount = messages.count - CachePolicy.maxMessages
+        let overflowCount = try context.fetchCount(FetchDescriptor<CachedMessage>()) - CachePolicy.maxMessages
         guard overflowCount > 0 else { return }
 
-        let messagesToEvict = messages
-            .sorted { left, right in
-                if left.cachedAt != right.cachedAt {
-                    return left.cachedAt < right.cachedAt
-                }
-
-                if left.timestamp != right.timestamp {
-                    return (left.timestamp ?? 0) < (right.timestamp ?? 0)
-                }
-
-                return left.sortIndex < right.sortIndex
-            }
-            .prefix(overflowCount)
-
-        for message in messagesToEvict {
+        var descriptor = FetchDescriptor<CachedMessage>(
+            sortBy: [
+                SortDescriptor(\.cachedAt),
+                SortDescriptor(\.timestamp),
+                SortDescriptor(\.sortIndex)
+            ]
+        )
+        descriptor.fetchLimit = overflowCount
+        for message in try context.fetch(descriptor) {
             context.delete(message)
         }
     }
@@ -263,15 +290,32 @@ enum CacheStore {
         return try context.fetch(descriptor).first
     }
 
-    @MainActor
-    private static func cachedMessage(cacheKey: String, in context: ModelContext) throws -> CachedMessage? {
-        var descriptor = FetchDescriptor<CachedMessage>(
-            predicate: #Predicate { cachedMessage in
-                cachedMessage.cacheKey == cacheKey
-            }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
+    /// Computes the cache key for every message in a sync batch. Identical
+    /// id-less messages (same role, timestamp, and content) would otherwise
+    /// collide, so each repeat gets a deterministic per-batch occurrence
+    /// index appended to its key.
+    private static func messageCacheKeys(
+        for messages: [ChatMessage],
+        serverURLString: String,
+        sessionID: String
+    ) -> [String] {
+        var occurrences: [String: Int] = [:]
+        return messages.map { message in
+            let baseKey = CachedMessage.cacheKey(
+                serverURLString: serverURLString,
+                sessionID: sessionID,
+                message: message
+            )
+            let occurrence = occurrences[baseKey, default: 0]
+            occurrences[baseKey] = occurrence + 1
+            guard occurrence > 0, message.messageId == nil else { return baseKey }
+            return CachedMessage.cacheKey(
+                serverURLString: serverURLString,
+                sessionID: sessionID,
+                message: message,
+                occurrence: occurrence
+            )
+        }
     }
 }
 

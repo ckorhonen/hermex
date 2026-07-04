@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftData
 
@@ -27,13 +28,13 @@ final class CachedMessage {
         sessionID: String,
         message: ChatMessage,
         sortIndex: Int,
+        cacheKey: String? = nil,
         cachedAt: Date = Date()
     ) {
-        self.cacheKey = Self.cacheKey(
+        self.cacheKey = cacheKey ?? Self.cacheKey(
             serverURLString: serverURLString,
             sessionID: sessionID,
-            message: message,
-            sortIndex: sortIndex
+            message: message
         )
         self.serverURLString = serverURLString
         self.sessionID = sessionID
@@ -43,13 +44,28 @@ final class CachedMessage {
         apply(message, sortIndex: sortIndex, cachedAt: cachedAt)
     }
 
+    /// Builds the unique key for a cached message. Messages with a server
+    /// `messageId` key on it directly. Id-less messages key on stable content
+    /// identity — role, timestamp, and a SHA-256 digest of the content — plus
+    /// an `occurrence` index that disambiguates identical duplicates within
+    /// one sync batch, so a pure position shift never rewrites the tail of
+    /// the transcript. (Rows written under the old sortIndex-based fallback
+    /// keys simply miss once and are rewritten on the next sync.)
     static func cacheKey(
         serverURLString: String,
         sessionID: String,
         message: ChatMessage,
-        sortIndex: Int
+        occurrence: Int = 0
     ) -> String {
-        let messagePart = message.messageId ?? "\(sortIndex)-\(message.timestamp ?? 0)"
+        let messagePart: String
+        if let messageId = message.messageId {
+            messagePart = messageId
+        } else {
+            let digest = SHA256.hash(data: Data((message.content ?? "").utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
+            messagePart = "content|\(message.role ?? "")|\(message.timestamp ?? 0)|\(digest)|\(occurrence)"
+        }
         return "\(serverURLString)|session|\(sessionID)|message|\(messagePart)"
     }
 

@@ -126,6 +126,81 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(updatedMessage.expiresAt, secondCachedAt.addingTimeInterval(CachePolicy.ttl))
     }
 
+    func testCacheMessagesPositionShiftUpdatesIDLessRowsInPlace() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let firstCachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let secondCachedAt = Date(timeIntervalSince1970: 1_770_000_100)
+        let idLessMessages = [
+            ChatMessage(role: "user", content: "First", timestamp: 1_770_000_001, messageId: nil),
+            ChatMessage(role: "assistant", content: "Second", timestamp: 1_770_000_002, messageId: nil)
+        ]
+
+        try CacheStore.cacheMessages(
+            idLessMessages,
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: firstCachedAt
+        )
+
+        let originalRows = try fetchCachedMessages(in: context).sorted { $0.sortIndex < $1.sortIndex }
+        XCTAssertEqual(originalRows.map(\.sortIndex), [0, 1])
+        let originalIdentities = originalRows.map(\.persistentModelID)
+        let originalKeys = originalRows.map(\.cacheKey)
+
+        // One message inserted above shifts both cached messages down a slot.
+        let shiftedMessages = [
+            ChatMessage(role: "user", content: "Inserted", timestamp: 1_770_000_000, messageId: nil)
+        ] + idLessMessages
+
+        try CacheStore.cacheMessages(
+            shiftedMessages,
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: secondCachedAt
+        )
+
+        let shiftedRows = try fetchCachedMessages(in: context).sorted { $0.sortIndex < $1.sortIndex }
+        XCTAssertEqual(shiftedRows.map(\.content), ["Inserted", "First", "Second"])
+        XCTAssertEqual(shiftedRows.map(\.sortIndex), [0, 1, 2])
+        // The pre-existing rows kept their identity and keys; only sortIndex
+        // (and the TTL metadata) moved — no delete/reinsert of the tail.
+        XCTAssertEqual(Array(shiftedRows.dropFirst()).map(\.persistentModelID), originalIdentities)
+        XCTAssertEqual(Array(shiftedRows.dropFirst()).map(\.cacheKey), originalKeys)
+    }
+
+    func testCacheMessagesKeepsIdenticalIDLessMessagesAsDistinctRows() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let duplicate = ChatMessage(role: "user", content: "Same", timestamp: 1_770_000_001, messageId: nil)
+
+        try CacheStore.cacheMessages(
+            [duplicate, duplicate],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let rows = try fetchCachedMessages(in: context).sorted { $0.sortIndex < $1.sortIndex }
+        XCTAssertEqual(rows.map(\.sortIndex), [0, 1])
+        XCTAssertEqual(Set(rows.map(\.cacheKey)).count, 2)
+
+        // Re-syncing the same window is a pure upsert: no rows added or dropped.
+        try CacheStore.cacheMessages(
+            [duplicate, duplicate],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt.addingTimeInterval(100)
+        )
+
+        XCTAssertEqual(try fetchCachedMessages(in: context).count, 2)
+    }
+
     func testCacheSessionUpsertsOneSessionWithoutRemovingExistingSessions() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
@@ -379,6 +454,110 @@ final class CacheStoreTests: XCTestCase {
 
         XCTAssertEqual(try fetchCachedSessions(in: context).map(\.sessionID), ["fresh-session"])
         XCTAssertTrue(try fetchCachedMessages(in: context).isEmpty)
+    }
+
+    func testCacheSessionsDeletesMessagesOfStaleSessions() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let otherServerURL = URL(string: "https://other.example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+
+        try CacheStore.cacheSessions(
+            try XCTUnwrap(decodeSessions("""
+            {"sessions": [
+              {"session_id": "keep", "title": "Keep", "last_message_at": 1770000000, "archived": false},
+              {"session_id": "stale", "title": "Stale", "last_message_at": 1770000000, "archived": false}
+            ]}
+            """).sessions),
+            serverURL: serverURL,
+            in: context,
+            cachedAt: cachedAt
+        )
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Keep me", timestamp: 1_770_000_001, messageId: "keep-m1")],
+            serverURL: serverURL,
+            sessionID: "keep",
+            in: context,
+            cachedAt: cachedAt
+        )
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Orphan", timestamp: 1_770_000_002, messageId: "stale-m1")],
+            serverURL: serverURL,
+            sessionID: "stale",
+            in: context,
+            cachedAt: cachedAt
+        )
+        // Same session ID on another server must survive this server's refresh.
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Other server", timestamp: 1_770_000_003, messageId: "other-m1")],
+            serverURL: otherServerURL,
+            sessionID: "stale",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        try CacheStore.cacheSessions(
+            try XCTUnwrap(decodeSessions("""
+            {"sessions": [{"session_id": "keep", "title": "Keep", "last_message_at": 1770000100, "archived": false}]}
+            """).sessions),
+            serverURL: serverURL,
+            in: context,
+            cachedAt: cachedAt.addingTimeInterval(100)
+        )
+
+        XCTAssertEqual(try fetchCachedSessions(in: context).map(\.sessionID), ["keep"])
+        XCTAssertEqual(
+            try fetchCachedMessages(in: context).compactMap(\.messageId).sorted(),
+            ["keep-m1", "other-m1"]
+        )
+    }
+
+    func testCacheMaintenanceIsDebouncedBetweenWrites() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let baseTime = Date(timeIntervalSince1970: 1_770_000_000)
+        let freshMessage = ChatMessage(role: "user", content: "Fresh", timestamp: 1_770_000_001, messageId: "fresh")
+
+        // The first write runs maintenance and arms the debounce window.
+        try CacheStore.cacheMessages(
+            [freshMessage],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: baseTime
+        )
+
+        // Seed a row in another session that is already expired.
+        context.insert(
+            CachedMessage(
+                serverURLString: serverURL.absoluteString,
+                sessionID: "old-session",
+                message: ChatMessage(role: "user", content: "Expired", timestamp: 1_760_000_000, messageId: "expired"),
+                sortIndex: 0,
+                cachedAt: baseTime.addingTimeInterval(-CachePolicy.ttl - 1)
+            )
+        )
+
+        // A write inside the debounce interval skips maintenance, so the
+        // expired row survives this pass.
+        try CacheStore.cacheMessages(
+            [freshMessage],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: baseTime.addingTimeInterval(CachePolicy.maintenanceInterval - 1)
+        )
+        XCTAssertNotNil(try fetchCachedMessages(in: context).first { $0.messageId == "expired" })
+
+        // A write after the interval runs maintenance again and purges it.
+        try CacheStore.cacheMessages(
+            [freshMessage],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: baseTime.addingTimeInterval(CachePolicy.maintenanceInterval + 1)
+        )
+        XCTAssertNil(try fetchCachedMessages(in: context).first { $0.messageId == "expired" })
     }
 
     func testCacheMaintenanceEvictsOldestMessagesAboveLimit() throws {
@@ -666,6 +845,10 @@ final class CacheStoreTests: XCTestCase {
     }
 
     private func makeContext() throws -> ModelContext {
+        // Maintenance is debounced via process-wide state; reset it so each
+        // test exercises housekeeping deterministically regardless of suite
+        // ordering.
+        CacheStore.lastMaintenanceRun = nil
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
             for: CachedSession.self,

@@ -4,6 +4,9 @@ import SwiftData
 enum CachePolicy {
     static let ttl: TimeInterval = 7 * 24 * 60 * 60
     static let maxMessages = 5_000
+    /// Minimum spacing between cache maintenance passes (expiry + eviction),
+    /// so housekeeping doesn't rescan the store on every cache write.
+    static let maintenanceInterval: TimeInterval = 5 * 60
 }
 
 @Model
