@@ -49,14 +49,14 @@ struct ApprovalRequestOverlay: View {
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let description = nonEmpty(prompt.pending.description) {
+            if let description = prompt.pending.description.nonEmpty {
                 Text(description)
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let command = nonEmpty(prompt.pending.command) {
+            if let command = prompt.pending.command.nonEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(command)
                         .font(.system(.footnote, design: .monospaced))
@@ -91,7 +91,7 @@ struct ApprovalRequestOverlay: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let errorMessage = nonEmpty(errorMessage) {
+            if let errorMessage = errorMessage.nonEmpty {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -149,11 +149,6 @@ struct ApprovalRequestOverlay: View {
             .buttonStyle(.chatDecision(role == .destructive ? .destructive : .secondary))
             .disabled(isResponding)
         }
-    }
-
-    private func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

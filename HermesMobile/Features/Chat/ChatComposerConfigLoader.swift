@@ -59,23 +59,23 @@ struct ChatComposerConfigLoader {
         do {
             let profilesResponse = try await client.profiles()
             state.profileOptions = profilesResponse.profiles ?? []
-            state.selectedProfileName = Self.nonEmpty(state.currentProfile)
-                ?? Self.nonEmpty(profilesResponse.active)
+            state.selectedProfileName = state.currentProfile.nonEmpty
+                ?? profilesResponse.active.nonEmpty
                 ?? profilesResponse.effectiveDefaultProfileName
 
-            if let sessionProfile = Self.nonEmpty(state.currentProfile),
-               Self.nonEmpty(profilesResponse.active) != sessionProfile {
+            if let sessionProfile = state.currentProfile.nonEmpty,
+               profilesResponse.active.nonEmpty != sessionProfile {
                 let switchResponse = try await client.switchProfile(name: sessionProfile)
                 state.profileOptions = switchResponse.profiles ?? state.profileOptions
-                state.selectedProfileName = Self.nonEmpty(switchResponse.active) ?? sessionProfile
+                state.selectedProfileName = switchResponse.active.nonEmpty ?? sessionProfile
                 state.currentProfile = state.selectedProfileName
 
                 if state.currentWorkspace == nil {
-                    state.currentWorkspace = Self.nonEmpty(switchResponse.defaultWorkspace)
+                    state.currentWorkspace = switchResponse.defaultWorkspace.nonEmpty
                 }
 
                 if state.currentModel == nil {
-                    state.currentModel = Self.nonEmpty(switchResponse.defaultModel)
+                    state.currentModel = switchResponse.defaultModel.nonEmpty
                 }
             }
 
@@ -84,7 +84,7 @@ struct ChatComposerConfigLoader {
                 in: state.profileOptions
             )
             if state.currentModel == nil {
-                state.currentModel = Self.nonEmpty(selectedProfile?.model)
+                state.currentModel = (selectedProfile?.model).nonEmpty
             }
 
             let modelsResponse = try await client.models()
@@ -92,8 +92,8 @@ struct ChatComposerConfigLoader {
             if state.currentModel == nil {
                 state.currentModel = modelsResponse.defaultModel
             }
-            if Self.nonEmpty(state.currentModelProvider) == nil {
-                state.currentModelProvider = Self.nonEmpty(selectedProfile?.provider)
+            if state.currentModelProvider.nonEmpty == nil {
+                state.currentModelProvider = (selectedProfile?.provider).nonEmpty
                     ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
             }
 
@@ -126,7 +126,7 @@ struct ChatComposerConfigLoader {
         matching profileName: String?,
         in profileOptions: [ProfileSummary]
     ) -> ProfileSummary? {
-        guard let profileName = nonEmpty(profileName) else { return nil }
+        guard let profileName = profileName.nonEmpty else { return nil }
         return profileOptions.first { $0.normalizedName == profileName }
     }
 
@@ -134,18 +134,13 @@ struct ChatComposerConfigLoader {
         for modelID: String?,
         in groups: [ModelCatalogGroup]
     ) -> String? {
-        guard let modelID = nonEmpty(modelID) else { return nil }
+        guard let modelID = modelID.nonEmpty else { return nil }
         let providers = Set(
             groups
                 .flatMap(\.slashAutocompleteModels)
                 .filter { $0.id == modelID }
-                .compactMap { nonEmpty($0.providerID) }
+                .compactMap { $0.providerID.nonEmpty }
         )
         return providers.count == 1 ? providers.first : nil
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }

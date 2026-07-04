@@ -6,14 +6,9 @@ struct TranscriptLinkPreviewSnapshot: Equatable {
     let imageData: Data?
 
     init(title: String? = nil, displayURL: URL? = nil, imageData: Data? = nil) {
-        self.title = Self.nonEmpty(title)
+        self.title = title.nonEmpty
         self.displayURL = displayURL
         self.imageData = imageData
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

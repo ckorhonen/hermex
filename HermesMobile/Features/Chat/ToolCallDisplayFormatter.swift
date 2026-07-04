@@ -35,11 +35,11 @@ enum ToolCallDisplayFormatter {
     }
 
     static func resultDisplay(preview: String?, toolName: String?) -> ToolCallResultDisplay? {
-        guard let preview = nonEmpty(preview) else { return nil }
+        guard let preview = preview.nonEmpty else { return nil }
 
         let parsedValue = parsedJSONValue(from: preview)
         let parsedText = parsedValue.flatMap { readableResultText(from: $0, toolName: toolName) }
-        let resultText = nonEmpty(parsedText) ?? preview
+        let resultText = parsedText.nonEmpty ?? preview
 
         return ToolCallResultDisplay(
             title: String(localized: "Result"),
@@ -51,7 +51,7 @@ enum ToolCallDisplayFormatter {
     private static func readableResultText(from value: JSONValue, toolName: String?) -> String? {
         switch value {
         case .string(let value):
-            return nonEmpty(normalizedDisplayString(value))
+            return normalizedDisplayString(value).nonEmpty
         case .number, .bool:
             return value.inlineDisplayText
         case .object(let object):
@@ -102,7 +102,7 @@ enum ToolCallDisplayFormatter {
             sections.append(String(localized: "Exit code: \(exitCode)"))
         }
 
-        return nonEmpty(sections.joined(separator: "\n"))
+        return sections.joined(separator: "\n").nonEmpty
     }
 
     private static func commonEnvelopeText(
@@ -148,7 +148,7 @@ enum ToolCallDisplayFormatter {
                let text = readableResultText(from: parsed, toolName: toolName) {
                 return text
             }
-            return nonEmpty(normalized)
+            return normalized.nonEmpty
         case .number, .bool:
             return value.inlineDisplayText
         case .object:
@@ -174,7 +174,7 @@ enum ToolCallDisplayFormatter {
             return nil
         }
 
-        return nonEmpty(textValues.joined(separator: "\n"))
+        return textValues.joined(separator: "\n").nonEmpty
     }
 
     private static func firstNonEmptyString(for keys: [String], in object: [String: JSONValue]) -> String? {
@@ -191,11 +191,11 @@ enum ToolCallDisplayFormatter {
 
         switch value {
         case .string(let value):
-            return nonEmpty(normalizedDisplayString(value))
+            return normalizedDisplayString(value).nonEmpty
         case .number, .bool:
             return value.inlineDisplayText
         case .object, .array:
-            return nonEmpty(value.toolDisplayText)
+            return value.toolDisplayText.nonEmpty
         case .null:
             return nil
         }
@@ -279,11 +279,6 @@ enum ToolCallDisplayFormatter {
     private static func isTerminalTool(_ toolName: String?) -> Bool {
         let name = toolName?.lowercased() ?? ""
         return ["terminal", "shell", "bash", "zsh", "command", "exec"].contains { name.contains($0) }
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 
     fileprivate static func normalizedDisplayString(_ value: String) -> String {

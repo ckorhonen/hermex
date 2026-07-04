@@ -146,7 +146,7 @@ struct ClarificationRequestCard: View {
 
     @ViewBuilder
     private var footer: some View {
-        if let errorMessage = nonEmpty(errorMessage) {
+        if let errorMessage = errorMessage.nonEmpty {
             Text(errorMessage)
                 .font(.caption)
                 .foregroundStyle(.red)
@@ -329,11 +329,6 @@ struct ClarificationRequestCard: View {
         }
 
         return "\(minutes)m \(seconds)s"
-    }
-
-    private func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

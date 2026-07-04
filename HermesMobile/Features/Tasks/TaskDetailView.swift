@@ -477,11 +477,11 @@ private struct CronRunOutputDetailView: View {
                         CronJobMetadataRow(title: String(localized: "Tokens"), value: "\(totalTokens)")
                     }
 
-                    if let model = nonEmpty(usage.model) {
+                    if let model = usage.model.nonEmpty {
                         CronJobMetadataRow(title: String(localized: "Model"), value: model)
                     }
 
-                    if let provider = nonEmpty(usage.provider) {
+                    if let provider = usage.provider.nonEmpty {
                         CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
                     }
 
@@ -500,7 +500,7 @@ private struct CronRunOutputDetailView: View {
             Text("Output")
                 .font(.headline)
 
-            if let content = nonEmpty(item.outputContent) {
+            if let content = item.outputContent.nonEmpty {
                 Text(content)
                     .font(.system(.body, design: .monospaced))
                     .textSelection(.enabled)
@@ -531,10 +531,5 @@ private struct CronRunOutputDetailView: View {
         let minutes = Int(duration / 60)
         let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
         return "\(minutes)m \(seconds)s"
-    }
-
-    private func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }

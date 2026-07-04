@@ -397,14 +397,14 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable {
     init?(_ command: AgentCommand) {
         guard command.cliOnly != true,
               command.gatewayOnly != true,
-              let name = Self.nonEmpty(command.name)
+              let name = command.name.nonEmpty
         else {
             return nil
         }
 
         self.name = name
-        description = Self.nonEmpty(command.description) ?? String(localized: "Agent command")
-        argHint = Self.nonEmpty(command.argsHint)
+        description = command.description.nonEmpty ?? String(localized: "Agent command")
+        argHint = command.argsHint.nonEmpty
     }
 
     static func matching(
@@ -438,11 +438,6 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable {
         return commands.lazy.compactMap(AgentSlashCommandSuggestion.init).first { suggestion in
             suggestion.name.lowercased() == lower
         }
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

@@ -214,7 +214,7 @@ final class SessionListViewModel {
             return false
         }
 
-        guard let profileName = Self.nonEmpty(profile.name) else {
+        guard let profileName = profile.name.nonEmpty else {
             activeProfileErrorMessage = String(localized: "The server did not provide a profile name.")
             return false
         }
@@ -234,12 +234,12 @@ final class SessionListViewModel {
 
         do {
             let response = try await client.switchProfile(name: profileName)
-            if let error = Self.nonEmpty(response.error) {
+            if let error = response.error.nonEmpty {
                 activeProfileErrorMessage = error
                 return false
             }
 
-            let resolvedName = Self.nonEmpty(response.active) ?? profileName
+            let resolvedName = response.active.nonEmpty ?? profileName
             let profileResponse = ProfilesResponse(profiles: response.profiles ?? profileOptions, active: resolvedName)
             applyActiveProfile(
                 profileResponse,
@@ -408,7 +408,7 @@ final class SessionListViewModel {
         modelContext: ModelContext? = nil,
         animation: Animation? = nil
     ) async -> Bool {
-        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+        guard let sessionId = session.sessionId.nonEmpty else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
@@ -426,7 +426,7 @@ final class SessionListViewModel {
         modelContext: ModelContext? = nil,
         animation: Animation? = nil
     ) async -> Bool {
-        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+        guard let sessionId = session.sessionId.nonEmpty else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
@@ -444,7 +444,7 @@ final class SessionListViewModel {
         modelContext: ModelContext? = nil,
         animation: Animation? = nil
     ) async -> Bool {
-        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+        guard let sessionId = session.sessionId.nonEmpty else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
@@ -458,7 +458,7 @@ final class SessionListViewModel {
     }
 
     func isMutating(_ session: SessionSummary) -> Bool {
-        guard let sessionId = Self.nonEmpty(session.sessionId) else { return false }
+        guard let sessionId = session.sessionId.nonEmpty else { return false }
         return mutatingSessionIDs.contains(sessionId)
     }
 
@@ -468,12 +468,12 @@ final class SessionListViewModel {
             return false
         }
 
-        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+        guard let sessionId = session.sessionId.nonEmpty else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
 
-        guard let title = Self.nonEmpty(rawTitle) else {
+        guard let title = rawTitle.nonEmpty else {
             actionErrorMessage = String(localized: "Enter a session title.")
             return false
         }
@@ -485,12 +485,12 @@ final class SessionListViewModel {
 
         do {
             let response = try await sessionMutator.rename(sessionID: sessionId, title: title)
-            if let error = Self.nonEmpty(response.error) {
+            if let error = response.error.nonEmpty {
                 actionErrorMessage = error
                 return false
             }
 
-            let resolvedTitle = Self.nonEmpty(response.session?.title) ?? title
+            let resolvedTitle = (response.session?.title).nonEmpty ?? title
             let baseSession = sessions.first(where: { $0.sessionId == sessionId }) ?? session
             let updatedSession = baseSession.replacingTitle(with: resolvedTitle)
             if let existingIndex = sessions.firstIndex(where: { $0.sessionId == sessionId }) {
@@ -516,7 +516,7 @@ final class SessionListViewModel {
     }
 
     func duplicate(_ session: SessionSummary, modelContext: ModelContext? = nil) async -> SessionSummary? {
-        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+        guard let sessionId = session.sessionId.nonEmpty else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return nil
         }
@@ -576,7 +576,7 @@ final class SessionListViewModel {
     }
 
     func move(_ session: SessionSummary, to projectID: String?, modelContext: ModelContext? = nil) async {
-        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+        guard let sessionId = session.sessionId.nonEmpty else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return
         }
@@ -776,9 +776,9 @@ final class SessionListViewModel {
             let workspace = workspaces.last ?? workspaces.workspaces?.compactMap(\.path).first
             let response = try await client.createSession(
                 workspace: workspace,
-                model: Self.nonEmpty(model),
-                modelProvider: Self.nonEmpty(modelProvider),
-                profile: Self.nonEmpty(profile)
+                model: model.nonEmpty,
+                modelProvider: modelProvider.nonEmpty,
+                profile: profile.nonEmpty
             )
 
             guard let sessionDetail = response.session else {
@@ -829,13 +829,7 @@ final class SessionListViewModel {
     }
 
     private static func normalizedStreamIDs(_ rawStreamIDs: [String]) -> [String] {
-        Array(Set(rawStreamIDs.compactMap(nonEmpty))).sorted()
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        Array(Set(rawStreamIDs.compactMap { $0.nonEmpty })).sorted()
     }
 
     private static func sortedSessions(_ sessions: [SessionSummary]) -> [SessionSummary] {
@@ -911,7 +905,7 @@ final class SessionListViewModel {
     }
 
     private func duplicateTitle(for session: SessionSummary) -> String {
-        let baseTitle = Self.nonEmpty(session.title) ?? String(localized: "Untitled Session")
+        let baseTitle = session.title.nonEmpty ?? String(localized: "Untitled Session")
         return String(localized: "\(baseTitle) (copy)")
     }
 
@@ -958,8 +952,8 @@ final class SessionListViewModel {
         activeProfileName = profileName
         activeProfileDisplayName = response.displayName(for: profileName)
             ?? profile?.displayName
-        activeProfileModel = Self.nonEmpty(profile?.model) ?? Self.nonEmpty(fallbackDefaultModel)
-        activeProfileProvider = Self.nonEmpty(profile?.provider)
+        activeProfileModel = (profile?.model).nonEmpty ?? fallbackDefaultModel.nonEmpty
+        activeProfileProvider = (profile?.provider).nonEmpty
     }
 
     private func mutate(

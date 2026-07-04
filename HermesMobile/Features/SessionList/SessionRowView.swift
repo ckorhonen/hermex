@@ -43,7 +43,7 @@ struct SessionRowView: View {
     }
 
     static func isActiveStreaming(_ session: SessionSummary) -> Bool {
-        session.isStreaming == true || nonEmpty(session.activeStreamId) != nil
+        session.isStreaming == true || session.activeStreamId.nonEmpty != nil
     }
 
     static func isScheduledSession(_ session: SessionSummary) -> Bool {
@@ -388,12 +388,6 @@ private struct ActiveSessionStreamingIndicator: View {
             isExpanded = true
         }
     }
-}
-
-private func nonEmpty(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
 }
 
 private enum SessionRelativeDateFormatter {

@@ -22,3 +22,19 @@ extension Error {
         return urlError.code == .cancelled
     }
 }
+
+extension String {
+    /// The string trimmed of whitespace and newlines, or `nil` when nothing remains.
+    /// Shared replacement for the per-file `nonEmpty(_:)` helpers.
+    var nonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+extension Optional where Wrapped == String {
+    /// `nil` when the value is absent or trims to empty; otherwise the trimmed string.
+    var nonEmpty: String? {
+        self?.nonEmpty
+    }
+}

@@ -2108,21 +2108,15 @@ struct ChatToolbarActionSlot<Content: View>: View {
 
 enum ChatToolbarSubtitleResolver {
     static func subtitle(workspacePath: String?, profileTitle: String?) -> String? {
-        if let workspace = nonEmpty(workspacePath) {
+        if let workspace = workspacePath.nonEmpty {
             return workspace.lastPathComponentFallback
         }
 
-        guard let profile = nonEmpty(profileTitle), profile != "Profile" else {
+        guard let profile = profileTitle.nonEmpty, profile != "Profile" else {
             return nil
         }
 
         return profile
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
