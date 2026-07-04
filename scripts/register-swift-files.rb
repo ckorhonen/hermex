@@ -20,10 +20,15 @@ TARGET_BY_PREFIX = {
 repo_root = File.expand_path("..", __dir__)
 project = Xcodeproj::Project.open(File.join(repo_root, "HermesMobile.xcodeproj"))
 
-existing = project.files.map { |f| f.real_path.to_s }.to_set rescue nil
-if existing.nil?
-  require "set"
-  existing = project.files.map { |f| f.real_path.to_s }.to_set
+require "set"
+existing = Set.new
+project.files.each do |f|
+  next unless f.isa == "PBXFileReference"
+  begin
+    existing << f.real_path.to_s
+  rescue StandardError
+    next
+  end
 end
 
 changed = false

@@ -26,6 +26,7 @@ struct SettingsView: View {
         self.server = server
         self.initialScrollTarget = initialScrollTarget
         self.onAPIError = onAPIError
+        _updateController = State(initialValue: ServerUpdateController(server: server, authManager: authManager))
     }
 
     @ScaledMetric(relativeTo: .body) private var settingsCardSpacing: CGFloat = 18
@@ -35,21 +36,8 @@ struct SettingsView: View {
     @State private var isConfirmingClearCache = false
     @State private var isClearingCache = false
     @State private var cacheStatusMessage: String?
-    @State private var isLoadingServerSettings = false
-    @State private var serverVersion: String?
-    @State private var serverSettingsError: String?
-    @State private var serverUpdateState: UpdatesCheckResponse.WebUIUpdateState?
-    @State private var updateApplyPhase: ServerUpdateApplyPhase = .idle
+    @State private var updateController: ServerUpdateController
     @State private var isConfirmingUpdate = false
-    @State private var updateApplyMessage: String?
-    @State private var isCheckingForUpdates = false
-    @State private var forcedCheckOutcome: UpdatesCheckResponse.ForcedCheckOutcome?
-    @State private var isPresentingForcedCheckResult = false
-    @State private var defaultModel: String?
-    @State private var defaultProfileName: String?
-    @State private var defaultProfileDisplayName: String?
-    @State private var isLoadingDefaultModel = false
-    @State private var isLoadingDefaultProfile = false
     @State private var showDefaultModelPicker = false
     @State private var showDefaultProfilePicker = false
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
@@ -456,7 +444,7 @@ struct SettingsView: View {
         .background(Color.clear)
         .navigationTitle("Settings")
         .task {
-            await loadServerSettings()
+            await updateController.loadServerSettings()
             await refreshNotificationPermissionStatus()
         }
         .alert("Clear this server's cache?", isPresented: $isConfirmingClearCache) {
@@ -473,7 +461,7 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Update") {
                 Task {
-                    await applyServerUpdate()
+                    await updateController.applyServerUpdate()
                 }
             }
         } message: {
@@ -484,14 +472,14 @@ struct SettingsView: View {
         // mid-animation; a fresh check overwrites it before re-presenting.
         .alert(
             forcedCheckAlertTitle,
-            isPresented: $isPresentingForcedCheckResult
+            isPresented: $updateController.isPresentingForcedCheckResult
         ) {
-            if case .updateAvailable = forcedCheckOutcome {
+            if case .updateAvailable = updateController.forcedCheckOutcome {
                 // The popup already carries the restart warning, so Update applies
                 // directly — no second confirmation dialog (issue #308).
                 Button("Update") {
                     Task {
-                        await applyServerUpdate()
+                        await updateController.applyServerUpdate()
                     }
                 }
                 Button("Dismiss", role: .cancel) {}
@@ -532,21 +520,21 @@ struct SettingsView: View {
         .sheet(isPresented: $showDefaultModelPicker) {
             DefaultModelPickerView(
                 server: server,
-                currentDefaultModel: defaultModel,
+                currentDefaultModel: updateController.defaultModel,
                 onSave: { model in
-                    defaultModel = model
+                    updateController.defaultModel = model
                 }
             )
         }
         .sheet(isPresented: $showDefaultProfilePicker) {
             DefaultProfilePickerView(
                 server: server,
-                currentDefaultProfileName: defaultProfileName,
+                currentDefaultProfileName: updateController.defaultProfileName,
                 onSave: { selection in
-                    defaultProfileName = selection.name
-                    defaultProfileDisplayName = selection.displayName
+                    updateController.defaultProfileName = selection.name
+                    updateController.defaultProfileDisplayName = selection.displayName
                     if let defaultModel = selection.defaultModel, !defaultModel.isEmpty {
-                        self.defaultModel = defaultModel
+                        updateController.defaultModel = defaultModel
                     }
                 }
             )
@@ -628,24 +616,24 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var serverVersionContent: some View {
-        if isLoadingServerSettings {
+        if updateController.isLoadingServerSettings {
             ProgressView()
-        } else if let serverVersion {
+        } else if let serverVersion = updateController.serverVersion {
             Text(serverVersion)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         } else {
-            Text(serverSettingsError ?? String(localized: "Unknown"))
+            Text(updateController.serverSettingsError ?? String(localized: "Unknown"))
                 .foregroundStyle(.secondary)
         }
     }
 
     private var defaultModelLabel: String {
-        if isLoadingDefaultModel {
+        if updateController.isLoadingDefaultModel {
             return String(localized: "Loading")
         }
 
-        guard let defaultModel, !defaultModel.isEmpty else {
+        guard let defaultModel = updateController.defaultModel, !defaultModel.isEmpty else {
             return String(localized: "Not set")
         }
 
@@ -653,15 +641,15 @@ struct SettingsView: View {
     }
 
     private var defaultProfileLabel: String {
-        if isLoadingDefaultProfile {
+        if updateController.isLoadingDefaultProfile {
             return String(localized: "Loading")
         }
 
-        if let defaultProfileDisplayName, !defaultProfileDisplayName.isEmpty {
+        if let defaultProfileDisplayName = updateController.defaultProfileDisplayName, !defaultProfileDisplayName.isEmpty {
             return defaultProfileDisplayName
         }
 
-        guard let defaultProfileName, !defaultProfileName.isEmpty else {
+        guard let defaultProfileName = updateController.defaultProfileName, !defaultProfileName.isEmpty else {
             return String(localized: "Not set")
         }
 
@@ -670,15 +658,15 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var serverStatusPill: some View {
-        if isLoadingServerSettings {
+        if updateController.isLoadingServerSettings {
             SettingsStatusPill(label: String(localized: "Loading"))
-        } else if serverSettingsError == nil, serverVersion != nil {
+        } else if updateController.serverSettingsError == nil, updateController.serverVersion != nil {
             // Only "Connected" when the latest load actually succeeded — a stale
             // `serverVersion` from an earlier success must not mask a now-failed
             // load (e.g. a restart that never came back).
             SettingsStatusPill(label: String(localized: "Connected"))
         } else {
-            SettingsStatusPill(label: serverSettingsError ?? String(localized: "Unknown"), tint: .orange)
+            SettingsStatusPill(label: updateController.serverSettingsError ?? String(localized: "Unknown"), tint: .orange)
         }
     }
 
@@ -738,38 +726,27 @@ struct SettingsView: View {
         notificationStatusMessage ?? notificationPermissionStatus.map(notificationPermissionLabel)
     }
 
-    // True while the server is applying/restarting an update. The manual check
-    // button is disabled then so a forced check can't race the recovery poll.
-    private var isUpdateApplyInFlight: Bool {
-        switch updateApplyPhase {
-        case .applying, .recovering:
-            return true
-        case .idle, .blocked, .failed:
-            return false
-        }
-    }
-
     // The manual "Check for updates" control (#308). Distinct from the passive
     // on-open check: it forces a live git fetch on the server. While a check is in
     // flight it swaps to a "Checking…" spinner; it's disabled during an apply so
     // the two update flows never run at once.
     @ViewBuilder
     private var serverUpdateCheckAction: some View {
-        if isCheckingForUpdates {
+        if updateController.isCheckingForUpdates {
             updateProgressRow(String(localized: "Checking for updates…"))
         } else {
             SettingsButton(String(localized: "Check for updates")) {
                 Task {
-                    await checkForUpdatesManually()
+                    await updateController.checkForUpdatesManually()
                 }
             }
-            .disabled(isUpdateApplyInFlight)
+            .disabled(updateController.isUpdateApplyInFlight)
             .padding(.top, 4)
         }
     }
 
     private var forcedCheckAlertTitle: String {
-        switch forcedCheckOutcome {
+        switch updateController.forcedCheckOutcome {
         case let .updateAvailable(behind):
             return String(localized: "Update available · \(behind) behind")
         case .upToDate:
@@ -782,7 +759,7 @@ struct SettingsView: View {
     }
 
     private var forcedCheckAlertMessage: String {
-        switch forcedCheckOutcome {
+        switch updateController.forcedCheckOutcome {
         case .updateAvailable:
             return String(localized: "This pulls the latest Hermes server version and restarts it. Active chats may be interrupted briefly; the app reconnects when the server is back.")
         case .upToDate:
@@ -800,7 +777,7 @@ struct SettingsView: View {
     // and let the plain version row stand on its own.
     @ViewBuilder
     private var serverUpdateNote: some View {
-        if serverVersion != nil, let serverUpdateState {
+        if updateController.serverVersion != nil, let serverUpdateState = updateController.serverUpdateState {
             switch serverUpdateState {
             case .upToDate:
                 updateNoteRow(systemImage: "checkmark.circle", tint: .secondary, text: String(localized: "Up to date"))
@@ -833,9 +810,9 @@ struct SettingsView: View {
     // refreshed `.upToDate` state removes the button.
     @ViewBuilder
     private var serverUpdateAction: some View {
-        switch updateApplyPhase {
+        switch updateController.updateApplyPhase {
         case .idle:
-            if serverVersion != nil, case .updateAvailable = serverUpdateState {
+            if updateController.serverVersion != nil, case .updateAvailable = updateController.serverUpdateState {
                 updateActionButton(title: String(localized: "Update"))
             }
         case .applying:
@@ -862,7 +839,7 @@ struct SettingsView: View {
         // Mirror of the check button's `isUpdateApplyInFlight` guard: while a
         // forced check is running, block Update/Retry so apply can't race the
         // in-flight POST /api/updates/check (#308 review).
-        .disabled(isCheckingForUpdates)
+        .disabled(updateController.isCheckingForUpdates)
         .padding(.top, 4)
     }
 
@@ -883,205 +860,11 @@ struct SettingsView: View {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
 
-            Text(updateApplyMessage ?? String(localized: "The update could not be applied."))
+            Text(updateController.updateApplyMessage ?? String(localized: "The update could not be applied."))
                 .font(AppFont.footnote())
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
-    }
-
-    private func loadServerSettings() async {
-        guard !isLoadingServerSettings else {
-            return
-        }
-
-        isLoadingServerSettings = true
-        isLoadingDefaultModel = true
-        isLoadingDefaultProfile = true
-        serverSettingsError = nil
-        serverUpdateState = nil
-        let client = APIClient.shared(for: server)
-
-        do {
-            let settings = try await client.settings()
-            serverVersion = settings.webuiVersion ?? settings.version
-            if serverVersion == nil {
-                serverSettingsError = String(localized: "Unknown")
-            }
-        } catch {
-            authManager.handleAPIError(error)
-            serverSettingsError = String(localized: "Unavailable")
-        }
-
-        isLoadingServerSettings = false
-
-        do {
-            let updates = try await client.updatesCheck()
-            serverUpdateState = updates.webuiUpdateState
-        } catch {
-            // Non-fatal: update availability is optional info. On any failure we
-            // degrade to showing the version only, with no indicator.
-            serverUpdateState = nil
-        }
-
-        do {
-            let catalog = try await client.models()
-            defaultModel = catalog.defaultModel
-        } catch {
-            // Non-fatal: default model is optional info
-            defaultModel = nil
-        }
-
-        isLoadingDefaultModel = false
-
-        do {
-            let profiles = try await client.profiles()
-            defaultProfileName = profiles.effectiveDefaultProfileName
-            defaultProfileDisplayName = profiles.displayName(for: defaultProfileName)
-        } catch {
-            // Non-fatal: default profile is optional info
-            defaultProfileName = nil
-            defaultProfileDisplayName = nil
-        }
-
-        isLoadingDefaultProfile = false
-    }
-
-    private func checkForUpdatesManually() async {
-        // Ignore taps while a check is already running or an apply/restart is in
-        // flight — both would race the shared `serverUpdateState`.
-        guard !isCheckingForUpdates, !isUpdateApplyInFlight else {
-            return
-        }
-
-        isCheckingForUpdates = true
-        let client = APIClient.shared(for: server)
-
-        do {
-            let response = try await client.updatesCheckForced()
-            // Refresh the passive inline indicator from the fresh result too, so a
-            // forced check keeps the on-open note in sync (issue #308).
-            serverUpdateState = response.webuiUpdateState
-            forcedCheckOutcome = response.forcedCheckOutcome
-        } catch {
-            authManager.handleAPIError(error)
-            forcedCheckOutcome = .error
-        }
-
-        isCheckingForUpdates = false
-        isPresentingForcedCheckResult = true
-    }
-
-    private func applyServerUpdate() async {
-        // Never start an apply while a forced check is in flight — the two race
-        // the same server-side git state, and the check's completion would
-        // overwrite update state / present its popup mid-apply. The inline
-        // Update button is also disabled then; this guards the path regardless
-        // (e.g. a tap that slips through the confirm dialog). The forced-check
-        // popup's own Update is safe: `isCheckingForUpdates` is already false
-        // before that popup presents (#308 review).
-        guard !isCheckingForUpdates else { return }
-
-        // Allow a fresh attempt only from a resting phase; ignore taps while a
-        // request is in flight or the server is mid-restart.
-        switch updateApplyPhase {
-        case .idle, .blocked, .failed:
-            break
-        case .applying, .recovering:
-            return
-        }
-
-        updateApplyPhase = .applying
-        updateApplyMessage = nil
-        let client = APIClient.shared(for: server)
-
-        let response: UpdatesApplyResponse
-        do {
-            response = try await client.applyUpdate(target: "webui")
-        } catch {
-            // The apply call returns before the server restarts, so a failure
-            // here is a real pre-restart error (auth, unreachable, decode).
-            authManager.handleAPIError(error)
-            updateApplyMessage = String(localized: "Could not reach the server to start the update.")
-            updateApplyPhase = .failed
-            return
-        }
-
-        switch response.outcome {
-        case .applying:
-            updateApplyPhase = .recovering
-            await waitForServerToReturn(using: client, previousVersion: serverVersion)
-        case .restartBlocked:
-            updateApplyMessage = response.displayMessage(
-                default: String(localized: "The server is busy with active work. Wait for it to finish, then retry.")
-            )
-            updateApplyPhase = .blocked
-        case .failed:
-            updateApplyMessage = response.displayMessage(
-                default: String(localized: "The update could not be applied.")
-            )
-            updateApplyPhase = .failed
-        }
-    }
-
-    /// Polls the self-restarting server until the restart is confirmed, then
-    /// refreshes the version and indicator. Bounded so a slow/stuck restart
-    /// never leaves a spinner up.
-    ///
-    /// Completion requires *proof the restart happened* — the reported version
-    /// changed, or the check explicitly reports `.upToDate` — not merely a
-    /// reachable server. That avoids finalising against the outgoing process or
-    /// on a transient `stale_check` that still claims a non-zero `behind`, while
-    /// still letting update-check-disabled servers converge via the new version.
-    /// State is refreshed inline (not via the non-reentrant `loadServerSettings`)
-    /// so a concurrent load can't make us flip to `.idle` without refreshing.
-    private func waitForServerToReturn(using client: APIClient, previousVersion: String?) async {
-        let maxAttempts = 30 // ~60s at a 2s cadence — generous for a self-restart.
-
-        for _ in 0..<maxAttempts {
-            guard !Task.isCancelled else { return }
-            // Wait first: the server flushes the response, then restarts ~2s
-            // later, so an immediate probe could hit the outgoing process.
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else { return }
-
-            // One reachable settings call gives us both liveness and the fresh
-            // version; a nil result means the restart outage hasn't cleared yet.
-            guard let settings = try? await client.settings() else {
-                continue
-            }
-
-            let newVersion = settings.webuiVersion ?? settings.version
-            let updateState = (try? await client.updatesCheck())?.webuiUpdateState ?? .unavailable
-            let restartConfirmed = (newVersion != nil && newVersion != previousVersion)
-                || updateState == .upToDate
-
-            if restartConfirmed {
-                serverVersion = newVersion
-                serverSettingsError = newVersion == nil ? String(localized: "Unknown") : nil
-                serverUpdateState = updateState
-                updateApplyPhase = .idle
-                updateApplyMessage = nil
-                return
-            }
-        }
-
-        // Didn't confirm the restart in the window. Refresh once so the indicator
-        // reflects reality, then surface a distinct, retryable failure — never a
-        // silent reset (the `.failed` UI stays visible regardless of the now
-        // possibly-nil `serverUpdateState`).
-        await loadServerSettings()
-        if serverSettingsError != nil {
-            updateApplyMessage = String(localized: "The server didn't come back after the update. Check the server, then retry.")
-            updateApplyPhase = .failed
-        } else if case .updateAvailable = serverUpdateState {
-            updateApplyMessage = String(localized: "The update is taking longer than expected to finish. Try again in a moment.")
-            updateApplyPhase = .failed
-        } else {
-            // Server is back and not reporting a pending update — treat as done.
-            updateApplyPhase = .idle
-            updateApplyMessage = nil
-        }
     }
 
     private func clearOfflineCache() async {
@@ -1156,20 +939,6 @@ struct SettingsView: View {
     }
 }
 
-/// Phases of the in-app "apply webui update" flow (issue #180).
-private enum ServerUpdateApplyPhase: Equatable {
-    /// No update in flight; show the "Update" button.
-    case idle
-    /// The apply request is in flight (before the server confirms a restart).
-    case applying
-    /// Server accepted the update and is restarting; we are polling for it.
-    case recovering
-    /// Restart was blocked by active chat/agent work; offer a retry.
-    case blocked
-    /// The update failed (conflict, diverged, unreachable, or timed-out restart).
-    case failed
-}
-
 private extension UNAuthorizationStatus {
     var allowsSettingsToggleOn: Bool {
         switch self {
@@ -1233,1004 +1002,6 @@ private struct SessionIdentitySettingsEditor: View {
 
             SettingsTextFieldRow(title: String(localized: "Initials"), text: $initials, placeholder: previewInitials)
         }
-    }
-}
-
-private struct SettingsTextFieldRow: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    let title: String
-    @Binding var text: String
-    let placeholder: String
-    var keyboardType: UIKeyboardType = .default
-    var autocapitalization: TextInputAutocapitalization = .words
-    var isSecure = false
-    var submitLabel: SubmitLabel = .return
-    var onSubmit: (() -> Void)? = nil
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 6) {
-                    titleLabel
-                    textField
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                HStack(spacing: 12) {
-                    titleLabel
-
-                    Spacer(minLength: 12)
-
-                    textField
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 190)
-                }
-            }
-        }
-    }
-
-    private var titleLabel: some View {
-        Text(title)
-            .font(AppFont.subheadline())
-    }
-
-    @ViewBuilder
-    private var textField: some View {
-        Group {
-            if isSecure {
-                SecureField(placeholder, text: $text)
-            } else {
-                TextField(placeholder, text: $text)
-            }
-        }
-        .font(AppFont.subheadline())
-        .textInputAutocapitalization(autocapitalization)
-        .autocorrectionDisabled()
-        .keyboardType(keyboardType)
-        .submitLabel(submitLabel)
-        .onSubmit { onSubmit?() }
-    }
-}
-
-private struct HeaderLogoColorSettings: View {
-    @Binding var selectedHex: String
-    let customColor: Binding<Color>
-
-    private var selectedColorName: String {
-        HeaderLogoColor.displayName(for: selectedHex)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Text("Accent Color")
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 12)
-
-                Text(selectedColorName)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .font(.subheadline)
-
-            HStack(spacing: 14) {
-                ZoraHeaderWordmark()
-                    .frame(width: 136, height: 40)
-                    .accessibilityHidden(true)
-
-                Spacer(minLength: 8)
-
-                Circle()
-                    .fill(HeaderLogoColor.color(for: selectedHex))
-                    .frame(width: 34, height: 34)
-                    .overlay(Circle().stroke(ZoraBrand.hairline, lineWidth: 1))
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(ZoraBrand.cardStroke, lineWidth: 1)
-            )
-
-            SettingsFootnote(String(localized: "The Zora waveform stays white. This color now accents your avatar and optional primary actions."))
-
-            HStack(spacing: 10) {
-                ForEach(HeaderLogoColor.presets) { preset in
-                    HeaderLogoColorPresetButton(
-                        preset: preset,
-                        isSelected: HeaderLogoColor.normalizedHex(selectedHex) == preset.hex
-                    ) {
-                        selectedHex = preset.hex
-                    }
-                }
-            }
-
-            ColorPicker("Custom", selection: customColor, supportsOpacity: false)
-                .font(.subheadline)
-        }
-    }
-}
-
-private struct HeaderLogoColorPresetButton: View {
-    let preset: HeaderLogoColorPreset
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(preset.color)
-                    .overlay(Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1))
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(HeaderLogoColor.prefersDarkForeground(for: preset.hex) ? ZoraBrand.ink : ZoraBrand.foreground)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(width: 34, height: 34)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "\(preset.name) accent color"))
-        .accessibilityValue(isSelected ? "Selected" : "")
-        .accessibilityHint("Updates the avatar and optional primary-action accent color.")
-    }
-}
-
-private struct SettingsCard<Content: View>: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @ScaledMetric(relativeTo: .body) private var contentSpacing: CGFloat = 12
-
-    let title: String
-    @ViewBuilder let content: Content
-
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .textCase(.uppercase)
-                .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
-
-            VStack(alignment: .leading, spacing: contentSpacing) {
-                content
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                shape.fill(cardFill)
-            }
-            .adaptiveGlass(
-                .regular,
-                fallbackMaterial: .regularMaterial,
-                in: shape
-            )
-            .overlay {
-                shape
-                    .stroke(cardStroke, lineWidth: colorSchemeContrast == .increased ? 1 : 0.75)
-                    .allowsHitTesting(false)
-            }
-            .shadow(color: Color.black.opacity(reduceTransparency ? 0.16 : 0.22), radius: 18, y: 10)
-        }
-    }
-
-    private var cardFill: Color {
-        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.94) : ZoraBrand.cardFillStrong
-    }
-
-    private var cardStroke: Color {
-        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.42) : ZoraBrand.cardStroke
-    }
-}
-
-private struct SettingsPickerRow<SelectionValue: Hashable, Options: View>: View {
-    let title: String
-    let systemImage: String
-    @Binding var selection: SelectionValue
-    @ViewBuilder let options: Options
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    init(
-        title: String,
-        systemImage: String,
-        selection: Binding<SelectionValue>,
-        @ViewBuilder options: () -> Options
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        _selection = selection
-        self.options = options()
-    }
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 8) {
-                    SettingsRowLabel(title: title, systemImage: systemImage)
-                        .accessibilityHidden(true)
-
-                    picker
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                HStack(spacing: 12) {
-                    SettingsRowLabel(title: title, systemImage: systemImage)
-                        .accessibilityHidden(true)
-
-                    Spacer(minLength: 12)
-
-                    picker
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-    }
-
-    private var picker: some View {
-        Picker(title, selection: $selection) {
-            options
-        }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .accessibilityLabel(Text(title))
-    }
-}
-
-private struct SettingsRowLabel: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(AppFont.subheadline(weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-
-            Text(title)
-                .font(AppFont.subheadline(weight: .medium))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-private struct SettingsFootnote: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(AppFont.caption())
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-private struct SettingsValueRow<Trailing: View>: View {
-    let title: String
-    @ViewBuilder let trailing: Trailing
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 6) {
-                    titleText
-
-                    trailing
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                HStack(spacing: 12) {
-                    titleText
-
-                    Spacer(minLength: 16)
-
-                    trailing
-                }
-            }
-        }
-        .font(AppFont.subheadline())
-        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-    }
-
-    private var titleText: some View {
-        Text(title)
-            .foregroundStyle(.primary)
-    }
-}
-
-private struct SettingsInfoRow: View {
-    let title: String
-    let value: String
-    var valueIsSelectable = false
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        SettingsValueRow(title: title) {
-            if valueIsSelectable {
-                valueText
-                    .textSelection(.enabled)
-            } else {
-                valueText
-            }
-        }
-    }
-
-    private var valueText: some View {
-        Text(value)
-            .foregroundStyle(.secondary)
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-            .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
-    }
-}
-
-private struct SettingsAccessoryRow: View {
-    let title: String
-    var value: String?
-    let systemImage: String
-    var accessorySystemImage = "chevron.forward"
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize, let value {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) {
-                        leadingLabel
-                        Spacer(minLength: 8)
-                        accessoryIcon
-                    }
-
-                    Text(value)
-                        .font(AppFont.caption(weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                        .padding(.leading, 34)
-                }
-            } else {
-                HStack(alignment: .center, spacing: 10) {
-                    leadingLabel
-
-                    Spacer(minLength: 8)
-
-                    if let value {
-                        Text(value)
-                            .font(AppFont.caption(weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .multilineTextAlignment(.trailing)
-                    }
-
-                    accessoryIcon
-                }
-            }
-        }
-        .foregroundStyle(.primary)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-
-    private var leadingLabel: some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(AppFont.subheadline(weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-
-            Text(title)
-                .font(AppFont.subheadline(weight: .medium))
-                .layoutPriority(1)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var accessoryIcon: some View {
-        Image(systemName: accessorySystemImage)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
-    }
-}
-
-private struct CustomHeadersSettingsView: View {
-    @Bindable var authManager: AuthManager
-    @State private var headers: [CustomHeader]
-    @Environment(\.scenePhase) private var scenePhase
-
-    init(authManager: AuthManager) {
-        self.authManager = authManager
-        _headers = State(initialValue: authManager.currentCustomHeaders)
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                CustomHeadersEditor(headers: $headers)
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .navigationTitle("Connection Headers")
-        .navigationBarTitleDisplayMode(.inline)
-        // Live-refresh the network clients on every edit (cheap, in-memory only)
-        // but defer the slow Keychain write until the editor is dismissed so
-        // typing never stutters.
-        .onChange(of: headers) { _, newValue in
-            authManager.updateCustomHeaders(newValue, persist: false)
-        }
-        .onDisappear {
-            authManager.updateCustomHeaders(headers, persist: true)
-        }
-        // onDisappear doesn't fire when the app is backgrounded or terminated
-        // mid-edit, so also flush to the Keychain when the scene leaves active.
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                authManager.updateCustomHeaders(headers, persist: true)
-            }
-        }
-    }
-}
-
-private struct SettingsToggleRow: View {
-    let title: String
-    let systemImage: String
-    @Binding var isOn: Bool
-
-    var body: some View {
-        Toggle(isOn: $isOn) {
-            SettingsRowLabel(title: title, systemImage: systemImage)
-        }
-        .toggleStyle(.switch)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-    }
-}
-
-private struct SettingsButton: View {
-    let title: String
-    var role: ButtonRole?
-    var isLoading = false
-    let action: () -> Void
-
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-
-    init(_ title: String, role: ButtonRole? = nil, isLoading: Bool = false, action: @escaping () -> Void) {
-        self.title = title
-        self.role = role
-        self.isLoading = isLoading
-        self.action = action
-    }
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-
-        Button(role: role, action: action) {
-            Group {
-                if isLoading {
-                    ProgressView()
-                } else {
-                    Text(title)
-                }
-            }
-            .font(AppFont.subheadline(weight: .medium))
-            .foregroundStyle(role == .destructive ? .red : .primary)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 46)
-            .background {
-                shape.fill((role == .destructive ? Color.red : Color.primary).opacity(0.08))
-            }
-            .adaptiveGlass(
-                .regular,
-                isInteractive: true,
-                tint: role == .destructive ? .red.opacity(0.08) : nil,
-                fallbackMaterial: .thinMaterial,
-                in: shape
-            )
-            .overlay {
-                shape
-                    .stroke((role == .destructive ? Color.red : Color.primary).opacity(strokeOpacity), lineWidth: 0.7)
-                    .allowsHitTesting(false)
-            }
-            .contentShape(shape)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var strokeOpacity: Double {
-        colorSchemeContrast == .increased ? 0.24 : 0.12
-    }
-}
-
-private struct SettingsStatusPill: View {
-    let label: String
-    var tint: Color = .secondary
-
-    var body: some View {
-        Text(label)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(tint)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Capsule(style: .continuous).fill(tint.opacity(0.12)))
-    }
-}
-
-private struct SettingsDivider: View {
-    var body: some View {
-        Divider()
-            .padding(.leading, 2)
-            .opacity(0.72)
-    }
-}
-
-// MARK: - Multi-server (#17)
-
-/// Small circular avatar (initials + per-server Header Logo Color) for server rows.
-private struct ServerAvatarBadge: View {
-    let initials: String
-    let colorHex: String
-    var size: CGFloat = 32
-
-    var body: some View {
-        Text(initials)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(HeaderLogoColor.prefersDarkForeground(for: colorHex) ? Color.black : Color.white)
-            .frame(width: size, height: size)
-            .background(HeaderLogoColor.color(for: colorHex), in: Circle())
-            .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-            .accessibilityHidden(true)
-    }
-}
-
-/// One row in the Settings "Servers" list: avatar, name, URL, and an active marker.
-private struct SettingsServerRow: View {
-    let account: ServerAccount
-    let isActive: Bool
-
-    private var hostFallback: String {
-        URL(string: account.urlString)?.host ?? account.urlString
-    }
-
-    private var name: String {
-        account.displayName.isEmpty ? hostFallback : account.displayName
-    }
-
-    private var previewInitials: String {
-        SessionIdentitySettings.displayInitials(
-            displayName: account.displayName,
-            storedInitials: account.initials,
-            fallbackFullName: hostFallback
-        )
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ServerAvatarBadge(initials: previewInitials, colorHex: account.headerLogoColorHex)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(AppFont.subheadline(weight: .medium))
-                    .lineLimit(1)
-
-                Text(account.urlString)
-                    .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: 8)
-
-            if isActive {
-                SettingsStatusPill(label: String(localized: "Active"))
-            }
-
-            Image(systemName: "chevron.forward")
-                .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-        }
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(isActive ? String(localized: "\(name), \(account.urlString), active server") : String(localized: "\(name), \(account.urlString)"))
-        .accessibilityHint("Opens server details to switch, edit, or remove.")
-    }
-}
-
-/// Reusable per-server identity editor (display name, initials, Header Logo Color),
-/// used by the add-server flow and the server detail screen (#17).
-private struct ServerIdentityEditor: View {
-    @Binding var displayName: String
-    @Binding var initials: String
-    @Binding var colorHex: String
-    /// Host-derived fallback used for the avatar preview when fields are empty.
-    let fallbackName: String
-
-    private var previewInitials: String {
-        SessionIdentitySettings.displayInitials(
-            displayName: displayName.isEmpty ? fallbackName : displayName,
-            storedInitials: initials,
-            fallbackFullName: fallbackName
-        )
-    }
-
-    private var initialsBinding: Binding<String> {
-        Binding(
-            get: { initials },
-            set: { initials = SessionIdentitySettings.normalizedInitials($0) }
-        )
-    }
-
-    private var colorBinding: Binding<Color> {
-        Binding(
-            get: { HeaderLogoColor.color(for: colorHex) },
-            set: { if let hex = HeaderLogoColor.hexString(from: $0) { colorHex = hex } }
-        )
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                ServerAvatarBadge(initials: previewInitials, colorHex: colorHex, size: 36)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Server Avatar")
-                        .font(AppFont.subheadline(weight: .medium))
-
-                    Text("Stored on this device only.")
-                        .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            SettingsTextFieldRow(
-                title: String(localized: "Display Name"),
-                text: $displayName,
-                placeholder: fallbackName.isEmpty ? String(localized: "Server") : fallbackName
-            )
-
-            SettingsDivider()
-
-            SettingsTextFieldRow(title: String(localized: "Initials"), text: initialsBinding, placeholder: previewInitials)
-
-            SettingsDivider()
-
-            HeaderLogoColorSettings(selectedHex: $colorHex, customColor: colorBinding)
-        }
-    }
-}
-
-/// Per-server detail: identity editing, switch-to-active, and remove/sign-out (#17).
-private struct ServerDetailView: View {
-    @Bindable var authManager: AuthManager
-    let account: ServerAccount
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    @State private var displayName: String
-    @State private var initials: String
-    @State private var colorHex: String
-    @State private var isConfirmingRemove = false
-    @State private var isRemoving = false
-
-    init(authManager: AuthManager, account: ServerAccount) {
-        self.authManager = authManager
-        self.account = account
-        _displayName = State(initialValue: account.displayName)
-        _initials = State(initialValue: account.initials)
-        _colorHex = State(initialValue: account.headerLogoColorHex)
-    }
-
-    private var isActive: Bool { account.id == authManager.activeServerID }
-    private var hasOtherServers: Bool { authManager.servers.count > 1 }
-    private var hostFallback: String { URL(string: account.urlString)?.host ?? account.urlString }
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                SettingsCard(title: String(localized: "Server")) {
-                    SettingsInfoRow(title: String(localized: "URL"), value: account.urlString, valueIsSelectable: true)
-
-                    SettingsDivider()
-
-                    SettingsValueRow(title: String(localized: "Status")) {
-                        SettingsStatusPill(label: isActive ? String(localized: "Active") : String(localized: "Inactive"))
-                    }
-                }
-
-                SettingsCard(title: String(localized: "Identity")) {
-                    ServerIdentityEditor(
-                        displayName: $displayName,
-                        initials: $initials,
-                        colorHex: $colorHex,
-                        fallbackName: hostFallback
-                    )
-                }
-
-                if !isActive {
-                    SettingsCard(title: String(localized: "Active Server")) {
-                        SettingsFootnote(String(localized: "Makes this the active server. Sessions, chats, and settings reload for it."))
-
-                        SettingsButton(String(localized: "Switch to This Server")) {
-                            authManager.switchActiveServer(to: account)
-                        }
-                    }
-                }
-
-                SettingsCard(title: isActive ? String(localized: "Account") : String(localized: "Remove Server")) {
-                    SettingsFootnote(removeFootnote)
-
-                    SettingsButton(removeButtonTitle, role: .destructive, isLoading: isRemoving) {
-                        isConfirmingRemove = true
-                    }
-                    .disabled(isRemoving)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 18)
-            .padding(.bottom, 36)
-        }
-        .background(Color(.systemBackground))
-        .navigationTitle(displayName.isEmpty ? hostFallback : displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        // Persist identity edits to this server's registry entry. When it's the
-        // active server, the registry mirrors them into the global @AppStorage so
-        // the avatar / header tint update live (#17).
-        .onChange(of: displayName) { persistIdentity() }
-        .onChange(of: initials) { persistIdentity() }
-        .onChange(of: colorHex) { persistIdentity() }
-        .alert(removeAlertTitle, isPresented: $isConfirmingRemove) {
-            Button("Cancel", role: .cancel) {}
-            Button(removeButtonTitle, role: .destructive) {
-                Task {
-                    let wasActive = isActive
-                    isRemoving = true
-                    // Purge this server's offline cache *before* removing it, while
-                    // the view (and its modelContext) is still alive — removing the
-                    // active server flips auth state and tears this stack down on
-                    // its own. Best-effort: the cache is server-keyed, so a leftover
-                    // row can never surface as another server's content (#18, PR
-                    // #286 W2).
-                    if let removedServerURL = URL(string: account.urlString) {
-                        try? CacheStore.clearCache(for: removedServerURL, in: modelContext)
-                    }
-                    await authManager.removeServer(account)
-                    // Only a non-active removal leaves this view alive to reset its
-                    // state and pop; the active-server case is already torn down.
-                    if !wasActive {
-                        isRemoving = false
-                        dismiss()
-                    }
-                }
-            }
-        } message: {
-            Text(removeAlertMessage)
-        }
-    }
-
-    private func persistIdentity() {
-        authManager.updateServerIdentity(
-            account,
-            displayName: displayName,
-            initials: initials,
-            headerLogoColorHex: colorHex
-        )
-    }
-
-    private var removeButtonTitle: String {
-        isActive ? String(localized: "Sign Out of This Server") : String(localized: "Remove Server")
-    }
-
-    private var removeAlertTitle: String {
-        isActive ? String(localized: "Sign out of this server?") : String(localized: "Remove this server?")
-    }
-
-    private var removeFootnote: String {
-        if isActive {
-            return hasOtherServers
-                ? String(localized: "Signs out and switches to another configured server.")
-                : String(localized: "Signs out and returns to onboarding.")
-        }
-        return String(localized: "Removes this server and its saved settings on this device. Your active server is unaffected.")
-    }
-
-    private var removeAlertMessage: String {
-        if isActive {
-            return hasOtherServers
-                ? String(localized: "You'll switch to another configured server. Sign in again to use this one.")
-                : String(localized: "You'll return to onboarding and need the server URL and password to sign back in.")
-        }
-        return String(localized: "This removes the server and its saved settings on this device. Your active server is unaffected.")
-    }
-}
-
-/// Secondary onboarding/auth flow to add another server, collecting URL/password
-/// (existing validation + login), custom headers, and per-server identity. Routes
-/// through `AuthManager.addServer`, which never disturbs the active server on
-/// failure (#17). Presented from Settings and from the session-list avatar
-/// long-press switcher (#283).
-struct AddServerView: View {
-    @Bindable var authManager: AuthManager
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var serverURLString = ""
-    @State private var password = ""
-    @State private var customHeaders: [CustomHeader] = []
-    @State private var needsPassword = false
-    @State private var isWorking = false
-    @State private var errorMessage: String?
-    @State private var displayName = ""
-    @State private var initials = ""
-    @State private var colorHex = HeaderLogoColor.defaultHex
-
-    private var trimmedURL: String {
-        serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var canSubmit: Bool { !trimmedURL.isEmpty && !isWorking }
-
-    private var derivedHost: String {
-        (try? AuthManager.normalizedServerURL(from: serverURLString))?.host ?? ""
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    SettingsCard(title: String(localized: "Server")) {
-                        SettingsTextFieldRow(
-                            title: String(localized: "URL"),
-                            text: $serverURLString,
-                            placeholder: "100.64.0.1:8787",
-                            keyboardType: .URL,
-                            autocapitalization: .never,
-                            submitLabel: .go,
-                            onSubmit: { Task { await submit() } }
-                        )
-
-                        if needsPassword {
-                            SettingsDivider()
-
-                            SettingsTextFieldRow(
-                                title: String(localized: "Password"),
-                                text: $password,
-                                placeholder: String(localized: "Server password"),
-                                autocapitalization: .never,
-                                isSecure: true,
-                                submitLabel: .go,
-                                onSubmit: { Task { await submit() } }
-                            )
-                        }
-                    }
-
-                    SettingsCard(title: String(localized: "Connection Headers")) {
-                        CustomHeadersEditor(headers: $customHeaders)
-                    }
-
-                    SettingsCard(title: String(localized: "Identity")) {
-                        ServerIdentityEditor(
-                            displayName: $displayName,
-                            initials: $initials,
-                            colorHex: $colorHex,
-                            fallbackName: derivedHost
-                        )
-                    }
-
-                    statusBanner
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 18)
-                .padding(.bottom, 36)
-            }
-            .background(Color(.systemBackground))
-            .navigationTitle("Add Server")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { Task { await submit() } }
-                        .disabled(!canSubmit)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusBanner: some View {
-        if isWorking {
-            SettingsFootnote(String(localized: "Checking server…"))
-        } else if needsPassword, errorMessage == nil {
-            SettingsFootnote(String(localized: "This server requires a password."))
-        }
-
-        if let errorMessage {
-            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                .font(AppFont.footnote())
-                .foregroundStyle(.orange)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func submit() async {
-        guard canSubmit else { return }
-        errorMessage = nil
-        isWorking = true
-        let outcome = await authManager.addServer(
-            serverURLString: serverURLString,
-            password: password,
-            customHeaders: customHeaders
-        )
-        isWorking = false
-
-        switch outcome {
-        case .needsPassword:
-            needsPassword = true
-        case .failed:
-            errorMessage = authManager.lastErrorMessage
-        case let .added(url):
-            applyIdentity(to: url)
-            dismiss()
-        }
-    }
-
-    /// Overrides the new server's seeded identity (the registry seeds it from the
-    /// previous active server's global defaults) with the add-flow's chosen values.
-    private func applyIdentity(to url: URL) {
-        guard let account = authManager.servers.first(where: { $0.id == url.absoluteString }) else { return }
-
-        let finalName = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (url.host ?? account.displayName)
-            : displayName
-        let finalInitials = SessionIdentitySettings.displayInitials(
-            displayName: finalName,
-            storedInitials: initials,
-            fallbackFullName: url.host ?? finalName
-        )
-        authManager.updateServerIdentity(
-            account,
-            displayName: finalName,
-            initials: finalInitials,
-            headerLogoColorHex: colorHex
-        )
     }
 }
 
