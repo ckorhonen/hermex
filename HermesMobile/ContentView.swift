@@ -88,25 +88,17 @@ struct ContentView: View {
 
     private func handleOpenURL(_ url: URL) {
         // A fresh request each time (new `id`) so a repeat invocation re-triggers navigation
-        // even if the previous one's value still lingers downstream. The voice variant carries
-        // `autoStartsVoiceInput` so the composer begins dictation once it appears (#338).
-        if HermesDeepLink.isNewChatVoiceURL(url) {
-            pendingNewChatRequest = NewChatRequest(autoStartsVoiceInput: true)
-            return
-        }
-
-        // The profile variant carries the chosen profile name, so the composer creates the
-        // session pinned to it (#339). A malformed link with no profile falls back to a
-        // plain new chat (server's active profile) rather than failing.
-        if HermesDeepLink.isNewChatInProfileURL(url) {
+        // even if the previous one's value still lingers downstream. New Chat links can carry
+        // a prompt/model/provider/profile for Wiki App launch buttons, while the voice variant
+        // still auto-starts dictation (#337/#338/#339).
+        if let payload = HermesDeepLink.newChatPayload(from: url) {
             pendingNewChatRequest = NewChatRequest(
-                profileName: HermesDeepLink.profileName(fromNewChatInProfile: url)
+                initialDraft: payload.initialPrompt ?? "",
+                autoStartsVoiceInput: payload.autoStartsVoiceInput,
+                profileName: payload.profileName,
+                modelName: payload.model,
+                modelProviderName: payload.modelProvider
             )
-            return
-        }
-
-        if HermesDeepLink.isNewChatURL(url) {
-            pendingNewChatRequest = NewChatRequest(autoStartsVoiceInput: false)
             return
         }
 

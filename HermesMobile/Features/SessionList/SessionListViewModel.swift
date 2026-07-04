@@ -744,9 +744,15 @@ final class SessionListViewModel {
     }
 
     /// Creates a new session. `profile` pins it to a specific server profile (the "New Chat
-    /// in <Profile>" App Intent, #339); nil keeps the legacy behavior of letting the server
-    /// use its active profile (the "+" button / plain New Chat).
-    func createSession(modelContext: ModelContext? = nil, profile: String? = nil) async -> SessionSummary? {
+    /// in <Profile>" App Intent, #339); `model`/`modelProvider` let deep links from Wiki
+    /// Apps preselect a model for the new session. Nil keeps the legacy behavior of letting
+    /// the server use its active/default configuration.
+    func createSession(
+        modelContext: ModelContext? = nil,
+        profile: String? = nil,
+        model: String? = nil,
+        modelProvider: String? = nil
+    ) async -> SessionSummary? {
         isCreatingSession = true
         actionErrorMessage = nil
         lastError = nil
@@ -757,8 +763,8 @@ final class SessionListViewModel {
             let workspace = workspaces.last ?? workspaces.workspaces?.compactMap(\.path).first
             let response = try await client.createSession(
                 workspace: workspace,
-                model: nil,
-                modelProvider: nil,
+                model: Self.nonEmpty(model),
+                modelProvider: Self.nonEmpty(modelProvider),
                 profile: Self.nonEmpty(profile)
             )
 
