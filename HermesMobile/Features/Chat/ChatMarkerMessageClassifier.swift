@@ -36,14 +36,18 @@ struct PreservedTaskListItem: Equatable, Identifiable {
 
 enum ChatMarkerMessageClassifier {
     private static let preservedTaskListPrefix = "[your active task list was preserved across context compression]"
-    private static let contextCompactionPrefixes = ["[context compaction", "context compaction"]
+    private static let contextCompactionPrefixes = [
+        "[context compaction",
+        "context compaction",
+        "[prior context"
+    ]
 
     static func classify(_ message: ChatMessage) -> ChatMarkerMessageKind? {
         guard let role = message.role, role != "tool" else { return nil }
 
         let text = trimmedContent(of: message)
 
-        if role == "user", hasCaseInsensitivePrefix(text, preservedTaskListPrefix) {
+        if hasCaseInsensitivePrefix(text, preservedTaskListPrefix) {
             return .preservedTaskList
         }
 
