@@ -2101,6 +2101,220 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testLoadMessagesRecomputesDisplayedReasoningGroupsFromTranscriptReasoning() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            return apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Fix the crash",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Patched the nil unwrap.",
+                    "timestamp": 1770000101,
+                    "message_id": "assistant-1",
+                    "reasoning": "Trace the optional chain to locate the bad force unwrap."
+                  }
+                ]
+              }
+            }
+            """, for: request)
+        }
+
+        XCTAssertTrue(viewModel.displayedReasoningGroups.isEmpty)
+
+        await viewModel.loadMessages()
+
+        // `displayedReasoningGroups` is memoized stored state recomputed by the
+        // `messages`/`messagesOffset`/`completedReasoningGroups` observers; a
+        // forgotten trigger would leave it stale (still empty) after the reload.
+        XCTAssertEqual(viewModel.displayedReasoningGroups.count, 1)
+        XCTAssertEqual(viewModel.displayedReasoningGroups.first?.anchorMessageID, "assistant-1")
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroups.first?.text,
+            "Trace the optional chain to locate the bad force unwrap."
+        )
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroups,
+            ChatViewModel.reasoningDisplayGroups(
+                messages: viewModel.messages,
+                messageOffset: viewModel.messagesOffset,
+                archivedGroups: viewModel.completedReasoningGroups
+            )
+        )
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroupsForAnchor("assistant-1"),
+            viewModel.displayedReasoningGroups
+        )
+        XCTAssertTrue(viewModel.displayedReasoningGroupsForAnchor("assistant-unknown").isEmpty)
+        XCTAssertTrue(viewModel.displayedReasoningGroupsForAnchor(nil).isEmpty)
+    }
+
+    @MainActor
+    func testCompletedStreamSessionRecomputesDisplayedReasoningGroupsFromTranscriptReasoning() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let didStart = await viewModel.sendMessage("Explain the plan")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("Live reasoning shown while streaming."))
+
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Explain the plan",
+              "message_id": "user-plan"
+            },
+            {
+              "role": "assistant",
+              "content": "Ship the fix behind a flag.",
+              "message_id": "assistant-plan",
+              "reasoning": "Compare rollout options before recommending one."
+            }
+          ]
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(session: completedSession)))
+
+        XCTAssertNil(viewModel.activeStreamID)
+        // The completed transcript replaces the live state: archived live groups
+        // are reset and the reasoning card is rebuilt from the message's own
+        // `reasoning` field via the `messages` observer.
+        XCTAssertTrue(viewModel.completedReasoningGroups.isEmpty)
+        XCTAssertTrue(viewModel.liveReasoningText.isEmpty)
+        XCTAssertEqual(viewModel.displayedReasoningGroups.count, 1)
+        XCTAssertEqual(viewModel.displayedReasoningGroups.first?.anchorMessageID, "assistant-plan")
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroups.first?.text,
+            "Compare rollout options before recommending one."
+        )
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroups,
+            ChatViewModel.reasoningDisplayGroups(
+                messages: viewModel.messages,
+                messageOffset: viewModel.messagesOffset,
+                archivedGroups: viewModel.completedReasoningGroups
+            )
+        )
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroupsForAnchor("assistant-plan"),
+            viewModel.displayedReasoningGroups
+        )
+        XCTAssertTrue(viewModel.displayedReasoningGroupsForAnchor("assistant-unknown").isEmpty)
+    }
+
+    @MainActor
+    func testLatestTurnToolCallsTracksLiveCompletedAndNewTurnMutations() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        XCTAssertTrue(viewModel.latestTurnToolCalls.isEmpty)
+
+        let didStart = await viewModel.sendMessage("Check the workspace")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.toolStarted(ToolStreamEvent(
+            eventType: "tool.started",
+            name: "terminal",
+            preview: "pwd",
+            args: ["command": .string("pwd")],
+            duration: nil,
+            isError: nil
+        )))
+
+        // `latestTurnToolCalls` is memoized stored state recomputed by the
+        // `messages`/`messagesOffset`/`completedToolCallGroups`/`liveToolCalls`
+        // observers; a forgotten trigger would leave it stale here.
+        XCTAssertEqual(viewModel.latestTurnToolCalls, viewModel.liveToolCalls)
+        XCTAssertEqual(viewModel.latestTurnToolCalls.map(\.name), ["terminal"])
+
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Check the workspace",
+              "message_id": "user-1"
+            },
+            {
+              "role": "assistant",
+              "content": "",
+              "message_id": "assistant-tool",
+              "tool_calls": [
+                {
+                  "id": "call-1",
+                  "function": {
+                    "name": "terminal",
+                    "arguments": "{\\"command\\":\\"pwd\\"}"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "content": "/Users/uzair/project",
+              "message_id": "tool-1",
+              "tool_call_id": "call-1"
+            },
+            {
+              "role": "assistant",
+              "content": "The workspace is /Users/uzair/project.",
+              "message_id": "assistant-final"
+            }
+          ]
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(session: completedSession)))
+
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertTrue(viewModel.liveToolCalls.isEmpty)
+        // After completion the recap reflects the archived groups of the
+        // current turn (anchored at "assistant-tool"), not the live calls.
+        XCTAssertEqual(
+            viewModel.latestTurnToolCalls,
+            viewModel.completedToolCallGroups.flatMap(\.toolCalls)
+        )
+        XCTAssertEqual(viewModel.latestTurnToolCalls.map(\.id), ["call-1"])
+        XCTAssertEqual(viewModel.latestTurnToolCalls.map(\.name), ["terminal"])
+        XCTAssertEqual(viewModel.latestTurnToolCalls.first?.preview, "/Users/uzair/project")
+
+        // A new user turn moves the turn boundary, so the previous turn's
+        // completed calls must drop out of the recap via the `messages` observer.
+        let didStartSecondTurn = await viewModel.sendMessage("Now summarize the workspace")
+        XCTAssertTrue(didStartSecondTurn)
+        XCTAssertTrue(viewModel.latestTurnToolCalls.isEmpty)
+    }
+
+    @MainActor
     func testCompletedStreamSessionMergesLiveFallbackIntoCompletedTurnActivity() async throws {
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(streamClient: streamClient) { request in
