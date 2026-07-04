@@ -32,11 +32,7 @@ struct MarkerMessageCardView: View {
             )
 
             if isExpanded {
-                Text(cardBody.isEmpty ? kind.title : cardBody)
-                    .font(AppFont.caption())
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                expandedBody(cardBody)
                     .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
@@ -59,6 +55,28 @@ struct MarkerMessageCardView: View {
         case .compressionReference:
             return "star"
         }
+    }
+
+    @ViewBuilder
+    private func expandedBody(_ cardBody: String) -> some View {
+        if kind == .preservedTaskList {
+            let items = ChatMarkerMessageClassifier.preservedTaskListItems(in: cardBody)
+            if items.isEmpty {
+                fallbackBody(cardBody)
+            } else {
+                PreservedTaskListBodyView(items: items, reduceMotion: reduceMotion)
+            }
+        } else {
+            fallbackBody(cardBody)
+        }
+    }
+
+    private func fallbackBody(_ cardBody: String) -> some View {
+        Text(cardBody.isEmpty ? kind.title : cardBody)
+            .font(AppFont.caption())
+            .foregroundStyle(.primary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func header(summary: String) -> some View {
@@ -128,5 +146,73 @@ struct MarkerMessageCardView: View {
         }
 
         return "\(oneLine.prefix(80))..."
+    }
+}
+
+private struct PreservedTaskListBodyView: View {
+    let items: [PreservedTaskListItem]
+    let reduceMotion: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(items) { item in
+                PreservedTaskListRowView(item: item, reduceMotion: reduceMotion)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+    }
+}
+
+private struct PreservedTaskListRowView: View {
+    let item: PreservedTaskListItem
+    let reduceMotion: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: iconName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(ZoraBrand.selectionAccent)
+                .frame(width: 18, alignment: .center)
+                .contentTransition(.symbolEffect(.replace))
+                .accessibilityHidden(true)
+
+            Text(item.title)
+                .font(AppFont.caption())
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .strikethrough(item.state == .checked, color: ZoraBrand.selectionAccent.opacity(0.8))
+                .opacity(item.state == .checked ? 0.72 : 1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(rowAnimation, value: item.state)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(accessibilityState), \(item.title)")
+    }
+
+    private var iconName: String {
+        switch item.state {
+        case .active:
+            return "list.bullet.circle.fill"
+        case .checked:
+            return "checkmark.circle.fill"
+        case .unchecked:
+            return "circle"
+        }
+    }
+
+    private var accessibilityState: String {
+        switch item.state {
+        case .active:
+            return String(localized: "In progress")
+        case .checked:
+            return String(localized: "Completed")
+        case .unchecked:
+            return String(localized: "Pending")
+        }
+    }
+
+    private var rowAnimation: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.22)
     }
 }
