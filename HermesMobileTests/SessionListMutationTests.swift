@@ -2130,6 +2130,147 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testVisibleSessionsHidesSubagentChildrenButKeepsNormalBranches() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {"session_id": "parent", "title": "Main chat", "last_message_at": 50, "archived": false},
+                {"session_id": "subagent-active", "title": "Research worker", "parent_session_id": "parent", "relationship_type": "child_session", "source_tag": "subagent", "last_message_at": 40, "archived": false},
+                {"session_id": "branch-copy", "title": "Branch copy", "parent_session_id": "parent", "relationship_type": "branch", "last_message_at": 30, "archived": false},
+                {"session_id": "untagged-child", "title": "Untagged linked chat", "parent_session_id": "parent", "last_message_at": 25, "archived": false},
+                {"session_id": "normal", "title": "Normal chat", "last_message_at": 20, "archived": false}
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["parent", "branch-copy", "untagged-child", "normal"]
+        )
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "worker", selectedProjectID: nil).compactMap(\.sessionId),
+            []
+        )
+    }
+
+    @MainActor
+    func testArchiveParentCascadesToKnownSubagentChildrenAndDropsStaleRows() async throws {
+        var loadCount = 0
+        var archivedSessionIDs: [String] = []
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                loadCount += 1
+                if loadCount == 1 {
+                    return apiTestJSONResponse("""
+                    {
+                      "sessions": [
+                        {"session_id": "parent", "title": "Main chat", "last_message_at": 50, "archived": false},
+                        {"session_id": "subagent-active", "title": "Research worker", "parent_session_id": "parent", "relationship_type": "child_session", "source_tag": "subagent", "last_message_at": 40, "archived": false},
+                        {"session_id": "subagent-done", "title": "Finished worker", "parent_session_id": "parent", "relationship_type": "child", "session_source": "subagent", "last_message_at": 35, "archived": false},
+                        {"session_id": "branch-copy", "title": "Branch copy", "parent_session_id": "parent", "relationship_type": "branch", "last_message_at": 30, "archived": false},
+                        {"session_id": "untagged-child", "title": "Untagged linked chat", "parent_session_id": "parent", "last_message_at": 25, "archived": false},
+                        {"session_id": "normal", "title": "Normal chat", "last_message_at": 20, "archived": false}
+                      ]
+                    }
+                    """, for: request)
+                }
+
+                // Simulate the bug: server reload still returns one sub-agent row after parent archive.
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {"session_id": "subagent-active", "title": "Research worker", "parent_session_id": "parent", "relationship_type": "child_session", "source_tag": "subagent", "last_message_at": 40, "archived": false},
+                    {"session_id": "branch-copy", "title": "Branch copy", "parent_session_id": "parent", "relationship_type": "branch", "last_message_at": 30, "archived": false},
+                    {"session_id": "untagged-child", "title": "Untagged linked chat", "parent_session_id": "parent", "last_message_at": 25, "archived": false},
+                    {"session_id": "normal", "title": "Normal chat", "last_message_at": 20, "archived": false}
+                  ]
+                }
+                """, for: request)
+            case "/api/session/archive":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["archived"] as? Bool, true)
+                archivedSessionIDs.append(try XCTUnwrap(body["session_id"] as? String))
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let parent = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "parent" })
+
+        let didArchive = await viewModel.archive(parent)
+
+        XCTAssertTrue(didArchive)
+        XCTAssertEqual(archivedSessionIDs, ["parent", "subagent-active", "subagent-done"])
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["branch-copy", "untagged-child", "normal"])
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["branch-copy", "untagged-child", "normal"]
+        )
+    }
+
+    @MainActor
+    func testArchiveParentRollsBackAlreadyArchivedRowsWhenChildArchiveFails() async throws {
+        var archiveRequests: [(sessionID: String, archived: Bool)] = []
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {"session_id": "parent", "title": "Main chat", "last_message_at": 50, "archived": false},
+                    {"session_id": "subagent-active", "title": "Research worker", "parent_session_id": "parent", "relationship_type": "child_session", "source_tag": "subagent", "last_message_at": 40, "archived": false}
+                  ]
+                }
+                """, for: request)
+            case "/api/session/archive":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                let sessionID = try XCTUnwrap(body["session_id"] as? String)
+                let archived = try XCTUnwrap(body["archived"] as? Bool)
+                archiveRequests.append((sessionID: sessionID, archived: archived))
+
+                if sessionID == "subagent-active", archived == true {
+                    let response = HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 500,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                    return (try XCTUnwrap(response), Data(#"{"error":"child archive failed"}"#.utf8))
+                }
+
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let before = viewModel.sessions
+        let parent = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "parent" })
+
+        let didArchive = await viewModel.archive(parent)
+
+        XCTAssertFalse(didArchive)
+        XCTAssertEqual(viewModel.sessions, before)
+        XCTAssertEqual(
+            archiveRequests.map { "\($0.sessionID):\($0.archived)" },
+            ["parent:true", "subagent-active:true", "parent:false"]
+        )
+        XCTAssertNotNil(viewModel.actionErrorMessage)
+        XCTAssertNotNil(viewModel.lastError)
+    }
+
+    @MainActor
     private func makeViewModel(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) throws -> SessionListViewModel {

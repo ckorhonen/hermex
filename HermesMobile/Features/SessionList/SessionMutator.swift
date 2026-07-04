@@ -13,7 +13,15 @@ struct SessionMutator {
     }
 
     func archive(sessionID: String) async throws {
-        _ = try await client.archiveSession(id: sessionID, archived: true)
+        try await setArchived(true, sessionID: sessionID)
+    }
+
+    func unarchive(sessionID: String) async throws {
+        try await setArchived(false, sessionID: sessionID)
+    }
+
+    private func setArchived(_ archived: Bool, sessionID: String) async throws {
+        _ = try await client.archiveSession(id: sessionID, archived: archived)
     }
 
     func delete(sessionID: String) async throws {

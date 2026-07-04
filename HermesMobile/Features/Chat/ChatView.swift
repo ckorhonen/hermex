@@ -605,10 +605,10 @@ struct ChatView: View {
                         Button {
                             showsChildSessionsSheet = true
                         } label: {
-                            Label("Child Sessions", systemImage: "info.circle")
+                            RobotSubagentToolbarLabel(activeCount: activeChildSessionCount)
                         }
-                        .accessibilityLabel("Child sessions")
-                        .accessibilityHint("Shows sub-agent sessions related to this chat.")
+                        .accessibilityLabel(subagentToolbarAccessibilityLabel)
+                        .accessibilityHint("Shows active and inactive sub-agent sessions related to this chat.")
                     }
                 }
 
@@ -639,6 +639,18 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    private var activeChildSessionCount: Int {
+        childSessions.filter(SessionRowView.isActiveStreaming).count
+    }
+
+    private var subagentToolbarAccessibilityLabel: String {
+        guard activeChildSessionCount > 0 else {
+            return String(localized: "Sub-agent sessions")
+        }
+
+        return String(localized: "\(activeChildSessionCount) active sub-agent sessions")
     }
 
     private var gitWriteAvailability: GitWriteAvailability {
@@ -2073,6 +2085,14 @@ private struct ChildSessionsSheet: View {
     let children: [SessionSummary]
     let onOpen: (SessionSummary) -> Void
 
+    private var activeChildren: [SessionSummary] {
+        children.filter(SessionRowView.isActiveStreaming)
+    }
+
+    private var inactiveChildren: [SessionSummary] {
+        children.filter { !SessionRowView.isActiveStreaming($0) }
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -2091,49 +2111,15 @@ private struct ChildSessionsSheet: View {
                     .padding(.vertical, 6)
                 }
 
-                Section("Sub-agents") {
-                    ForEach(children) { child in
-                        Button {
-                            onOpen(child)
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: "arrow.triangle.branch")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(ZoraBrand.tertiaryForeground)
-                                    .frame(width: 20, height: 20)
+                if !activeChildren.isEmpty {
+                    childSessionSection(title: "Active", children: activeChildren, isActive: true)
+                }
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(SessionRowView.displayTitle(for: child))
-                                        .font(AppFont.subheadline(weight: .semibold))
-                                        .foregroundStyle(ZoraBrand.foreground)
-                                        .lineLimit(2)
-
-                                    if let metadata = SessionRowView.metadataLabel(
-                                        for: child,
-                                        showsMessageCount: true,
-                                        showsWorkspace: true
-                                    ) {
-                                        Text(metadata)
-                                            .font(AppFont.caption())
-                                            .foregroundStyle(ZoraBrand.secondaryForeground)
-                                            .lineLimit(1)
-                                    }
-                                }
-
-                                Spacer(minLength: 8)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open sub-agent session, \(SessionRowView.displayTitle(for: child))")
-                    }
+                if !inactiveChildren.isEmpty {
+                    childSessionSection(title: "Inactive", children: inactiveChildren, isActive: false)
                 }
             }
-            .navigationTitle("Child Sessions")
+            .navigationTitle("Sub-agents")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -2142,6 +2128,95 @@ private struct ChildSessionsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func childSessionSection(
+        title: LocalizedStringKey,
+        children: [SessionSummary],
+        isActive: Bool
+    ) -> some View {
+        Section(title) {
+            ForEach(children) { child in
+                Button {
+                    onOpen(child)
+                } label: {
+                    ChildSessionRow(child: child, isActive: isActive)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Open sub-agent session, \(SessionRowView.displayTitle(for: child))"))
+            }
+        }
+    }
+}
+
+private struct RobotSubagentToolbarLabel: View {
+    let activeCount: Int
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: "robot")
+                .accessibilityHidden(true)
+
+            if activeCount > 0 {
+                Text("\(activeCount)")
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 17, minHeight: 17)
+                    .padding(.horizontal, activeCount > 9 ? 3 : 0)
+                    .background(Capsule().fill(ZoraBrand.selectionAccent))
+                    .offset(x: 9, y: -9)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+private struct ChildSessionRow: View {
+    let child: SessionSummary
+    let isActive: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isActive ? "dot.radiowaves.left.and.right" : "arrow.triangle.branch")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isActive ? ZoraBrand.selectionAccent : ZoraBrand.tertiaryForeground)
+                .frame(width: 20, height: 20)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(SessionRowView.displayTitle(for: child))
+                        .font(AppFont.subheadline(weight: .semibold))
+                        .foregroundStyle(ZoraBrand.foreground)
+                        .lineLimit(2)
+
+                    if isActive {
+                        Text("Active")
+                            .font(AppFont.caption(weight: .semibold))
+                            .foregroundStyle(ZoraBrand.selectionAccent)
+                            .lineLimit(1)
+                    }
+                }
+
+                if let metadata = SessionRowView.metadataLabel(
+                    for: child,
+                    showsMessageCount: true,
+                    showsWorkspace: true
+                ) {
+                    Text(metadata)
+                        .font(AppFont.caption())
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -431,11 +431,40 @@ final class SessionListViewModel {
             return false
         }
 
-        guard beginSessionMutation(sessionId) else { return false }
-        defer { endSessionMutation(sessionId) }
+        let archiveIDs = archiveCascadeIDs(forParentSessionID: sessionId)
+        guard beginSessionMutations(archiveIDs) else { return false }
+        defer { endSessionMutations(archiveIDs) }
 
-        return await mutate(modelContext: modelContext, animation: animation) {
-            try await sessionMutator.archive(sessionID: sessionId)
+        actionErrorMessage = nil
+        lastError = nil
+
+        do {
+            var archivedIDs: [String] = []
+            do {
+                for archiveID in archiveIDs {
+                    try await sessionMutator.archive(sessionID: archiveID)
+                    archivedIDs.append(archiveID)
+                }
+            } catch {
+                await rollbackArchiveCascade(for: archivedIDs)
+                throw error
+            }
+
+            let didReload = await load(modelContext: modelContext, animation: animation)
+            guard didReload else { return false }
+
+            removeArchivedCascadeLocally(
+                sessionIDs: Set(archiveIDs),
+                modelContext: modelContext,
+                animation: animation
+            )
+            return true
+        } catch {
+            guard !error.isCancellation else { return false }
+
+            lastError = error
+            actionErrorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -876,6 +905,53 @@ final class SessionListViewModel {
         }
     }
 
+    private func archiveCascadeIDs(forParentSessionID parentSessionID: String) -> [String] {
+        let childIDs = sessions.compactMap { session -> String? in
+            guard session.normalizedParentSessionId == parentSessionID,
+                  session.isSubagentListChildSession
+            else { return nil }
+
+            return Self.nonEmpty(session.sessionId)
+        }
+
+        var seenIDs = Set<String>()
+        return ([parentSessionID] + childIDs).filter { seenIDs.insert($0).inserted }
+    }
+
+    private func removeArchivedCascadeLocally(
+        sessionIDs: Set<String>,
+        modelContext: ModelContext?,
+        animation: Animation?
+    ) {
+        let filteredSessions = sessions.filter { session in
+            guard let sessionID = Self.nonEmpty(session.sessionId) else { return true }
+            return !sessionIDs.contains(sessionID)
+        }
+
+        if filteredSessions != sessions {
+            applySessions(filteredSessions, animation: animation)
+        }
+
+        guard let modelContext else { return }
+        do {
+            try CacheStore.cacheSessions(filteredSessions, serverURL: server, in: modelContext)
+        } catch {
+            cacheErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func rollbackArchiveCascade(for archivedIDs: [String]) async {
+        for archivedID in archivedIDs.reversed() {
+            do {
+                try await sessionMutator.unarchive(sessionID: archivedID)
+            } catch {
+                cacheErrorMessage = String(
+                    localized: "Archive rollback failed for session \(archivedID): \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
     private func contentMatchIDs(from sessions: [SessionSummary]) -> [String] {
         let locallyVisibleSessionIDs = Set(self.sessions.compactMap { session -> String? in
             guard session.archived != true, let sessionID = session.sessionId, !sessionID.isEmpty else {
@@ -921,6 +997,23 @@ final class SessionListViewModel {
 
     private func endSessionMutation(_ sessionId: String) {
         mutatingSessionIDs.remove(sessionId)
+    }
+
+    private func beginSessionMutations(_ sessionIDs: [String]) -> Bool {
+        // SessionListViewModel is @MainActor, so this check and assignment are serialized
+        // with the rest of the session mutation state.
+        let requestedSessionIDs = Set(sessionIDs)
+        let updatedSessionIDs = mutatingSessionIDs.union(requestedSessionIDs)
+        guard updatedSessionIDs.count == mutatingSessionIDs.count + requestedSessionIDs.count else {
+            return false
+        }
+
+        mutatingSessionIDs = updatedSessionIDs
+        return true
+    }
+
+    private func endSessionMutations(_ sessionIDs: [String]) {
+        sessionIDs.forEach { mutatingSessionIDs.remove($0) }
     }
 
     private func upsertProject(_ project: ProjectSummary) {
