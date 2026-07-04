@@ -1616,11 +1616,19 @@ struct ChatView: View {
 
             await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
                 sessionID: session.sessionId,
+                sessionTitle: displayTitle,
+                responsePreview: showsLiveActivityResponseExcerpts ? responseCompletionNotificationPreview : nil,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
                 completedNormally: true,
                 sceneIsActive: completionContext.sceneIsActive
             )
         }
+    }
+
+    private var responseCompletionNotificationPreview: String? {
+        viewModel.messages.reversed().first { message in
+            message.role == "assistant" && message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }?.content
     }
 
     private func beginResponseCompletionBackgroundTask() {

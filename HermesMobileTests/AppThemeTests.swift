@@ -338,11 +338,35 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         XCTAssertEqual(ResponseCompletionNotificationRequest(sessionID: nil).userInfo, [:])
     }
 
+    func testRequestCopyUsesSessionTitleAndReplyPreview() {
+        let request = ResponseCompletionNotificationRequest(
+            sessionID: "session-abc",
+            sessionTitle: "  Morning briefing follow-ups  ",
+            responsePreview: "  **Calendar is clear.**\n\nTwo inbox items need approval.  "
+        )
+
+        XCTAssertEqual(request.title, "Zora finished: Morning briefing follow-ups")
+        XCTAssertEqual(request.body, "Latest reply: Calendar is clear. Two inbox items need approval.")
+    }
+
+    func testRequestCopyFallsBackWhenContextIsMissing() {
+        let request = ResponseCompletionNotificationRequest(
+            sessionID: nil,
+            sessionTitle: "  ",
+            responsePreview: "\n\t"
+        )
+
+        XCTAssertEqual(request.title, "Zora has a reply ready")
+        XCTAssertEqual(request.body, "Open the session to review the response and decide the next step.")
+    }
+
     func testSchedulesAllowedResponseCompletionWithSessionID() async {
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)
 
         let didSchedule = await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
             sessionID: "session-abc",
+            sessionTitle: "Release copy review",
+            responsePreview: "Updated the notification copy and build checks passed.",
             preferenceEnabled: true,
             completedNormally: true,
             sceneIsActive: false,
@@ -351,7 +375,13 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
 
         XCTAssertTrue(didSchedule)
         XCTAssertEqual(scheduler.authorizationStatusCallCount, 1)
-        XCTAssertEqual(scheduler.scheduledRequests, [ResponseCompletionNotificationRequest(sessionID: "session-abc")])
+        XCTAssertEqual(scheduler.scheduledRequests, [
+            ResponseCompletionNotificationRequest(
+                sessionID: "session-abc",
+                sessionTitle: "Release copy review",
+                responsePreview: "Updated the notification copy and build checks passed."
+            )
+        ])
     }
 
     func testDoesNotScheduleBlockedResponseCompletion() async {

@@ -971,14 +971,55 @@ enum ResponseCompletionNotificationPolicy {
 }
 
 struct ResponseCompletionNotificationRequest: Equatable {
-    static let title = String(localized: "Hermes response complete")
-    static let body = String(localized: "The assistant finished responding.")
-
     let sessionID: String?
+    let sessionTitle: String?
+    let responsePreview: String?
+
+    init(sessionID: String?, sessionTitle: String? = nil, responsePreview: String? = nil) {
+        self.sessionID = sessionID
+        self.sessionTitle = Self.normalizedCopy(sessionTitle, maxLength: 72)
+        self.responsePreview = Self.normalizedCopy(responsePreview, maxLength: 180)
+    }
+
+    var title: String {
+        guard let sessionTitle else {
+            return String(localized: "Zora has a reply ready")
+        }
+
+        return String(localized: "Zora finished: \(sessionTitle)")
+    }
+
+    var body: String {
+        guard let responsePreview else {
+            return String(localized: "Open the session to review the response and decide the next step.")
+        }
+
+        return String(localized: "Latest reply: \(responsePreview)")
+    }
 
     var userInfo: [String: String] {
         guard let sessionID, !sessionID.isEmpty else { return [:] }
         return ["session_id": sessionID]
+    }
+
+    private static func normalizedCopy(_ value: String?, maxLength: Int) -> String? {
+        guard var text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+
+        text = text.replacingOccurrences(
+            of: #"\[([^\]]+)\]\([^)]+\)"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        text = text.replacingOccurrences(of: #"[`*_>#]+"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        guard text.count > maxLength else { return text }
+
+        let endIndex = text.index(text.startIndex, offsetBy: max(0, maxLength - 1))
+        return String(text[..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
     }
 }
 
@@ -1034,8 +1075,8 @@ struct UserNotificationResponseCompletionScheduler: ResponseCompletionNotificati
 
     func schedule(_ request: ResponseCompletionNotificationRequest) async {
         let content = UNMutableNotificationContent()
-        content.title = ResponseCompletionNotificationRequest.title
-        content.body = ResponseCompletionNotificationRequest.body
+        content.title = request.title
+        content.body = request.body
         content.sound = .default
         content.userInfo = request.userInfo
 
@@ -1075,6 +1116,8 @@ enum ResponseCompletionNotificationService {
     @discardableResult
     static func scheduleResponseCompletedIfAllowed(
         sessionID: String?,
+        sessionTitle: String? = nil,
+        responsePreview: String? = nil,
         preferenceEnabled: Bool,
         completedNormally: Bool,
         sceneIsActive: Bool,
@@ -1090,7 +1133,11 @@ enum ResponseCompletionNotificationService {
             return false
         }
 
-        await scheduler.schedule(ResponseCompletionNotificationRequest(sessionID: sessionID))
+        await scheduler.schedule(ResponseCompletionNotificationRequest(
+            sessionID: sessionID,
+            sessionTitle: sessionTitle,
+            responsePreview: responsePreview
+        ))
         return true
     }
 }
