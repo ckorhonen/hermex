@@ -1,6 +1,14 @@
 import SwiftUI
 import UIKit
 
+enum ChatTranscriptSpacing {
+    static let message: CGFloat = 8
+    static let turnBlock: CGFloat = 5
+    static let markdownBlock: CGFloat = 6
+    static let markdownRichBlock: CGFloat = 10
+    static let contentTopInset: CGFloat = 14
+}
+
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -266,7 +274,7 @@ struct ChatTranscriptView: View {
                 .id(bottomAnchorID)
                 .allowsHitTesting(false)
         }
-        .padding(.top, 16)
+        .padding(.top, ChatTranscriptSpacing.contentTopInset)
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
         .frame(width: viewportWidth, alignment: transcriptFrameAlignment)
