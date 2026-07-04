@@ -96,15 +96,26 @@ struct ReasoningBlockView: View {
     }
 
     private func summary(for value: String) -> String {
-        let oneLine = value
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let oneLine = markdownStrippedPreviewText(from: value)
 
         if oneLine.count <= 80 {
             return oneLine
         }
 
         return "\(oneLine.prefix(80))..."
+    }
+
+    /// The expanded thinking card can render markdown, but the collapsed header
+    /// is a compact one-line preview. Render markdown to plain text there so the
+    /// snippet reads like prose instead of showing raw markers such as `**`.
+    private func markdownStrippedPreviewText(from value: String) -> String {
+        let plainText = (try? AttributedString(markdown: value)).map { String($0.characters) } ?? value
+
+        return plainText
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
