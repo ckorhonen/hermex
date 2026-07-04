@@ -99,6 +99,8 @@ struct ChatView: View {
     let server: URL
     let onAPIError: (Error) -> Void
     let loadsInitialMessages: Bool
+    let childSessions: [SessionSummary]
+    let onOpenRelatedSession: (SessionSummary) -> Void
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
@@ -128,6 +130,7 @@ struct ChatView: View {
     @State private var showProfileNewSessionConfirmation = false
     @State private var goalDraft = ""
     @State private var showsGoalSheet = false
+    @State private var showsChildSessionsSheet = false
     @State private var activeGitSheet: ActiveGitSheet?
     @State private var turnDiffPresentation: TurnDiffPresentation?
     @State private var viewModel: ChatViewModel
@@ -151,12 +154,16 @@ struct ChatView: View {
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
+        childSessions: [SessionSummary] = [],
+        onOpenRelatedSession: @escaping (SessionSummary) -> Void = { _ in },
         autoStartsVoiceInput: Bool = false
     ) {
         self.session = session
         self.server = server
         self.onAPIError = onAPIError
         self.loadsInitialMessages = loadsInitialMessages
+        self.childSessions = childSessions
+        self.onOpenRelatedSession = onOpenRelatedSession
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -453,6 +460,16 @@ struct ChatView: View {
             .navigationDestination(item: $forkedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
+            .sheet(isPresented: $showsChildSessionsSheet) {
+                ChildSessionsSheet(
+                    parent: session,
+                    children: childSessions,
+                    onOpen: { child in
+                        showsChildSessionsSheet = false
+                        onOpenRelatedSession(child)
+                    }
+                )
+            }
             .fullScreenCover(item: $selectableResponseText) { selectableText in
                 SelectableResponseTextView(selection: selectableText)
             }
@@ -583,6 +600,18 @@ struct ChatView: View {
 
         ToolbarItem(placement: .topBarTrailing) {
             ChatToolbarActionCluster {
+                if !childSessions.isEmpty {
+                    ChatToolbarActionSlot {
+                        Button {
+                            showsChildSessionsSheet = true
+                        } label: {
+                            Label("Child Sessions", systemImage: "info.circle")
+                        }
+                        .accessibilityLabel("Child sessions")
+                        .accessibilityHint("Shows sub-agent sessions related to this chat.")
+                    }
+                }
+
                 if viewModel.hasActivatedGoalCommand {
                     ChatToolbarActionSlot {
                         goalControlMenu
@@ -1998,6 +2027,85 @@ struct ChatView: View {
         }
 
         return max(0, transcriptMessages.count - 1 - index)
+    }
+}
+
+private struct ChildSessionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let parent: SessionSummary
+    let children: [SessionSummary]
+    let onOpen: (SessionSummary) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(SessionRowView.displayTitle(for: parent))
+                            .font(AppFont.headline(weight: .semibold))
+                            .foregroundStyle(ZoraBrand.foreground)
+                            .lineLimit(2)
+
+                        Text("Related sub-agent sessions are view-only transcripts that support this conversation.")
+                            .font(AppFont.caption())
+                            .foregroundStyle(ZoraBrand.secondaryForeground)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 6)
+                }
+
+                Section("Sub-agents") {
+                    ForEach(children) { child in
+                        Button {
+                            onOpen(child)
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(ZoraBrand.tertiaryForeground)
+                                    .frame(width: 20, height: 20)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(SessionRowView.displayTitle(for: child))
+                                        .font(AppFont.subheadline(weight: .semibold))
+                                        .foregroundStyle(ZoraBrand.foreground)
+                                        .lineLimit(2)
+
+                                    if let metadata = SessionRowView.metadataLabel(
+                                        for: child,
+                                        showsMessageCount: true,
+                                        showsWorkspace: true
+                                    ) {
+                                        Text(metadata)
+                                            .font(AppFont.caption())
+                                            .foregroundStyle(ZoraBrand.secondaryForeground)
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer(minLength: 8)
+
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open sub-agent session, \(SessionRowView.displayTitle(for: child))")
+                    }
+                }
+            }
+            .navigationTitle("Child Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

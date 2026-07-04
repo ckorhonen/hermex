@@ -156,6 +156,103 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(session.id, "session-Legacy Session-1770000100.0")
         XCTAssertEqual(session.id, "session-Legacy Session-1770000100.0")
     }
+
+    func testSessionSummaryDecodesLineageAndReadOnlyFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let session = try decoder.decode(
+            SessionSummary.self,
+            from: Data("""
+            {
+              "session_id": "child-1",
+              "title": "Worker transcript",
+              "parent_session_id": "parent-1",
+              "relationship_type": "child_session",
+              "parent_title": "Parent chat",
+              "read_only": true,
+              "session_source": "subagent"
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(session.parentSessionId, "parent-1")
+        XCTAssertEqual(session.relationshipType, "child_session")
+        XCTAssertEqual(session.parentTitle, "Parent chat")
+        XCTAssertTrue(session.isReadOnlySession)
+        XCTAssertTrue(session.isChildSession)
+        XCTAssertTrue(session.isSubagentSession)
+    }
+
+    func testSessionSummaryTreatsIsReadOnlyAliasAsReadOnly() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let session = try decoder.decode(
+            SessionSummary.self,
+            from: Data("""
+            {
+              "session_id": "child-2",
+              "parent_session_id": "parent-1",
+              "relationship_type": "child_session",
+              "is_read_only": true
+            }
+            """.utf8)
+        )
+
+        XCTAssertTrue(session.isReadOnlySession)
+        XCTAssertTrue(session.isChildSession)
+    }
+
+    func testSessionSidebarRowsNestChildSessionsUnderVisibleParents() {
+        let parent = SessionSummary(sessionId: "parent", title: "Main chat")
+        let child = SessionSummary(
+            sessionId: "child",
+            title: "Sub-agent",
+            sessionSource: "subagent",
+            parentSessionId: "parent",
+            relationshipType: "child_session",
+            readOnly: true
+        )
+        let sibling = SessionSummary(sessionId: "sibling", title: "Standalone")
+
+        let rows = SessionSidebarRow.rows(from: [parent, child, sibling])
+
+        XCTAssertEqual(rows.map(\.session.id), ["parent", "sibling"])
+        XCTAssertEqual(rows.first?.children.map(\.id), ["child"])
+    }
+
+    func testSessionSidebarRowsKeepOrphanChildrenVisible() {
+        let orphan = SessionSummary(
+            sessionId: "orphan",
+            title: "Sub-agent",
+            sessionSource: "subagent",
+            parentSessionId: "missing-parent",
+            relationshipType: "child_session"
+        )
+
+        let rows = SessionSidebarRow.rows(from: [orphan])
+
+        XCTAssertEqual(rows.map(\.session.id), ["orphan"])
+        XCTAssertTrue(rows.first?.children.isEmpty == true)
+    }
+
+    func testSessionSidebarRowsDoNotNestForks() {
+        let parent = SessionSummary(sessionId: "parent", title: "Main chat")
+        let fork = SessionSummary(
+            sessionId: "fork",
+            title: "Intentional branch",
+            sessionSource: "fork",
+            parentSessionId: "parent",
+            relationshipType: "fork"
+        )
+
+        let rows = SessionSidebarRow.rows(from: [parent, fork])
+
+        XCTAssertEqual(rows.map(\.session.id), ["parent", "fork"])
+        XCTAssertTrue(rows.first?.children.isEmpty == true)
+    }
+
 }
 
 final class SessionSidebarDisclosureSettingsTests: XCTestCase {

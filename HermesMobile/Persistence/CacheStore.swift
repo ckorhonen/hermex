@@ -300,6 +300,12 @@ private extension SessionSummary {
         sessionSource = cachedSession.sessionSource
         sourceLabel = cachedSession.sourceLabel
         matchType = nil
+        parentSessionId = cachedSession.parentSessionId
+        relationshipType = cachedSession.relationshipType
+        parentTitle = cachedSession.parentTitle
+        readOnly = cachedSession.readOnly
+        isReadOnly = cachedSession.isReadOnly
+        sidebarReferenceSessions = nil
     }
 }
 

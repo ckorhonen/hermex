@@ -11,15 +11,24 @@ struct SessionRowView: View {
     var showsMessageCount = true
     var showsWorkspace = true
     var isViewingCachedData = false
+    var nestingLevel = 0
+
+    private var isNestedChild: Bool { nestingLevel > 0 || session.isChildSession || session.isSubagentSession }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: isNestedChild ? 8 : 10) {
+            if isNestedChild {
+                childBranchGlyph
+                    .padding(.top, streamingIndicatorTopPadding - 2)
+            }
+
             ActiveSessionStreamingIndicator(isActive: Self.isActiveStreaming(session))
                 .padding(.top, streamingIndicatorTopPadding)
 
             rowContent
         }
-        .padding(.horizontal, 14)
+        .padding(.leading, isNestedChild ? 30 : 14)
+        .padding(.trailing, 14)
         .padding(.vertical, rowVerticalPadding)
         .frame(minHeight: rowMinimumHeight, alignment: .center)
         .overlay(alignment: .bottom) {
@@ -79,6 +88,14 @@ struct SessionRowView: View {
 
         if isScheduledSession(session) {
             labels.append(String(localized: "Scheduled"))
+        }
+
+        if session.isSubagentSession {
+            labels.append(String(localized: "Sub-agent"))
+        }
+
+        if session.isReadOnlySession {
+            labels.append(String(localized: "Read-only"))
         }
 
         if isViewingCachedData {
@@ -155,8 +172,8 @@ struct SessionRowView: View {
     private var titleAndPin: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(displayTitle)
-                .font(AppFont.headline(weight: .semibold))
-                .foregroundStyle(ZoraBrand.foreground)
+                .font(isNestedChild ? AppFont.subheadline(weight: .semibold) : AppFont.headline(weight: .semibold))
+                .foregroundStyle(isNestedChild ? ZoraBrand.secondaryForeground : ZoraBrand.foreground)
                 .lineLimit(titleLineLimit)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
@@ -240,7 +257,14 @@ struct SessionRowView: View {
     }
 
     private var visibleStateBadges: [SessionRowStateBadgeKind] {
-        Self.stateBadgeKinds(for: session, isViewingCachedData: isViewingCachedData)
+        var badges = Self.stateBadgeKinds(for: session, isViewingCachedData: isViewingCachedData)
+        if isNestedChild, !badges.contains(.subagent) {
+            badges.insert(.subagent, at: 0)
+        }
+        if session.isReadOnlySession, !badges.contains(.readOnly) {
+            badges.append(.readOnly)
+        }
+        return badges
     }
 
     private var showsSupplementalContent: Bool {
@@ -252,11 +276,15 @@ struct SessionRowView: View {
     }
 
     private var rowVerticalPadding: CGFloat {
-        verticalPadding + (dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+        let base = verticalPadding + (dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+        return isNestedChild ? max(5, base - 3) : base
     }
 
     private var rowMinimumHeight: CGFloat {
-        showsSupplementalContent ? 62 : 52
+        if isNestedChild {
+            return showsSupplementalContent ? 52 : 44
+        }
+        return showsSupplementalContent ? 62 : 52
     }
 
     private var titleLineLimit: Int {
@@ -276,7 +304,25 @@ struct SessionRowView: View {
             return ZoraBrand.foreground.opacity(0.30)
         }
 
+        if isNestedChild {
+            return ZoraBrand.listDivider.opacity(0.62)
+        }
+
         return Self.isActiveStreaming(session) ? ZoraBrand.listDividerStrong : ZoraBrand.listDivider
+    }
+
+    private var childBranchGlyph: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(ZoraBrand.tertiaryForeground.opacity(0.38))
+                .frame(width: 1, height: 12)
+
+            Image(systemName: "arrow.turn.down.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(ZoraBrand.tertiaryForeground.opacity(0.78))
+        }
+        .frame(width: 14)
+        .accessibilityHidden(true)
     }
 
     private var relativeDate: String? {
@@ -308,6 +354,8 @@ struct SessionRowView: View {
 
 enum SessionRowStateBadgeKind: String, Identifiable {
     case scheduled
+    case subagent
+    case readOnly
     case cached
 
     var id: String { rawValue }
@@ -316,6 +364,10 @@ enum SessionRowStateBadgeKind: String, Identifiable {
         switch self {
         case .scheduled:
             return String(localized: "Scheduled")
+        case .subagent:
+            return String(localized: "Sub-agent")
+        case .readOnly:
+            return String(localized: "View-only")
         case .cached:
             return String(localized: "Cached")
         }
@@ -325,6 +377,10 @@ enum SessionRowStateBadgeKind: String, Identifiable {
         switch self {
         case .scheduled:
             return ZoraBrand.selectionAccent
+        case .subagent:
+            return ZoraBrand.tertiaryForeground
+        case .readOnly:
+            return .blue
         case .cached:
             return .orange
         }
@@ -336,10 +392,17 @@ private struct SessionRowStateBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if badge == .scheduled {
+            switch badge {
+            case .scheduled:
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 9, weight: .bold))
-            } else {
+            case .subagent:
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 8, weight: .bold))
+            case .readOnly:
+                Image(systemName: "lock")
+                    .font(.system(size: 8, weight: .bold))
+            case .cached:
                 Circle()
                     .fill(badge.tint)
                     .frame(width: 5, height: 5)

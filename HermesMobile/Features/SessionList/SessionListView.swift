@@ -122,7 +122,13 @@ struct SessionListView: View {
                 }
             }
             .navigationDestination(item: $createdSession) { session in
-                ChatView(session: session, server: server, onAPIError: authManager.handleAPIError)
+                ChatView(
+                    session: session,
+                    server: server,
+                    onAPIError: authManager.handleAPIError,
+                    childSessions: childSessions(for: session),
+                    onOpenRelatedSession: openSession
+                )
             }
             .navigationDestination(item: $pendingNewChat) { route in
                 PendingNewChatView(
@@ -220,8 +226,14 @@ struct SessionListView: View {
         } else if let destination = selectedUtilityDestination {
             utilityDestinationView(destination)
         } else if let session = selectedDetailSession {
-            ChatView(session: session, server: server, onAPIError: authManager.handleAPIError)
-                .id(session.id)
+            ChatView(
+                session: session,
+                server: server,
+                onAPIError: authManager.handleAPIError,
+                childSessions: childSessions(for: session),
+                onOpenRelatedSession: openSession
+            )
+            .id(session.id)
         } else {
             splitEmptyDetail
         }
@@ -530,6 +542,12 @@ struct SessionListView: View {
 
     private var automatedSessionVisibility: AutomatedSessionVisibility {
         AutomatedSessionVisibility(showsCron: showsCronSessions, showsCli: showsCliSessions)
+    }
+
+    private func childSessions(for parent: SessionSummary) -> [SessionSummary] {
+        viewModel.sessions.filter { child in
+            child.normalizedParentSessionId == parent.id && child.isChildSession
+        }
     }
 
     private var emptySessionsTitle: String {

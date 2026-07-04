@@ -32,6 +32,11 @@ final class CachedSession {
     var sourceTag: String?
     var sessionSource: String?
     var sourceLabel: String?
+    var parentSessionId: String?
+    var relationshipType: String?
+    var parentTitle: String?
+    var readOnly: Bool?
+    var isReadOnly: Bool?
     var cachedAt: Date
     var expiresAt: Date
 
@@ -71,6 +76,11 @@ final class CachedSession {
         sourceTag = session.sourceTag
         sessionSource = session.sessionSource
         sourceLabel = session.sourceLabel
+        parentSessionId = session.parentSessionId
+        relationshipType = session.relationshipType
+        parentTitle = session.parentTitle
+        readOnly = session.readOnly
+        isReadOnly = session.isReadOnly
         self.cachedAt = cachedAt
         expiresAt = cachedAt.addingTimeInterval(CachePolicy.ttl)
     }

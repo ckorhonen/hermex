@@ -1,6 +1,31 @@
 import SwiftUI
 import UIKit
 
+struct SessionSidebarRow: Identifiable, Equatable {
+    let session: SessionSummary
+    let children: [SessionSummary]
+
+    var id: String { session.id }
+
+    static func rows(from sessions: [SessionSummary]) -> [SessionSidebarRow] {
+        let sessionIDs = Set(sessions.map(\.id))
+        let childrenByParent = Dictionary(grouping: sessions.filter { session in
+            guard let parentID = session.normalizedParentSessionId else { return false }
+            return session.isChildSession && sessionIDs.contains(parentID)
+        }, by: { $0.normalizedParentSessionId ?? "" })
+        let childIDs = Set(childrenByParent.values.flatMap { $0.map(\.id) })
+
+        return sessions
+            .filter { !childIDs.contains($0.id) }
+            .map { session in
+                SessionSidebarRow(
+                    session: session,
+                    children: childrenByParent[session.id] ?? []
+                )
+            }
+    }
+}
+
 struct SessionListRowActions {
     let retryLoad: () -> Void
     let open: (SessionSummary) -> Void
@@ -333,8 +358,13 @@ struct SessionListRowsSection: View {
                 .padding(.horizontal, 24)
                 .sessionsScreenListRow()
         } else {
-            ForEach(sessions) { session in
-                sessionListRow(for: session)
+            ForEach(SessionSidebarRow.rows(from: sessions)) { row in
+                sessionListRow(for: row.session, childCount: row.children.count)
+
+                ForEach(row.children) { child in
+                    sessionListRow(for: child, nestingLevel: 1)
+                        .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
+                }
             }
         }
     }
@@ -411,9 +441,14 @@ struct SessionListRowsSection: View {
         return (String(localized: "Could not load sessions"), fallbackMessage)
     }
 
-    private func sessionListRow(for session: SessionSummary) -> some View {
+    private func sessionListRow(
+        for session: SessionSummary,
+        nestingLevel: Int = 0,
+        childCount: Int = 0
+    ) -> some View {
         let isSelected = selectedSessionID == session.id
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let isNestedChild = nestingLevel > 0
+        let shape = RoundedRectangle(cornerRadius: isNestedChild ? 14 : 18, style: .continuous)
 
         return Button {
             actions.open(session)
@@ -422,18 +457,26 @@ struct SessionListRowsSection: View {
                 session: session,
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
-                isViewingCachedData: viewModel.isViewingCachedData
+                isViewingCachedData: viewModel.isViewingCachedData,
+                nestingLevel: nestingLevel
             )
             .background {
                 if isSelected {
                     shape
-                        .fill(ZoraBrand.foreground.opacity(0.12))
+                        .fill(ZoraBrand.foreground.opacity(isNestedChild ? 0.075 : 0.12))
                 }
             }
             .overlay {
                 if isSelected {
                     shape
-                        .stroke(ZoraBrand.foreground.opacity(0.28), lineWidth: 0.85)
+                        .stroke(ZoraBrand.foreground.opacity(isNestedChild ? 0.20 : 0.28), lineWidth: 0.85)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .trailing) {
+                if childCount > 0, !isNestedChild {
+                    childCountBadge(childCount)
+                        .padding(.trailing, 18)
                         .allowsHitTesting(false)
                 }
             }
@@ -460,6 +503,24 @@ struct SessionListRowsSection: View {
             )
         }
         .sessionsScreenListRow(insets: EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
+    }
+
+    private func childCountBadge(_ count: Int) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 9, weight: .bold))
+            Text("\(count)")
+                .font(AppFont.caption2(weight: .bold))
+        }
+        .foregroundStyle(ZoraBrand.secondaryForeground)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(ZoraBrand.cardFill.opacity(0.42), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(ZoraBrand.surfaceHairlineStrong.opacity(0.6), lineWidth: 0.75)
+        }
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -497,7 +558,10 @@ struct SessionListRowsSection: View {
     }
 
     private func canShowSessionMutationActions(for session: SessionSummary) -> Bool {
-        !viewModel.isViewingCachedData && hasServerSessionID(session)
+        !viewModel.isViewingCachedData
+            && hasServerSessionID(session)
+            && !session.isReadOnlySession
+            && !session.isSubagentSession
     }
 }
 
@@ -537,14 +601,14 @@ struct SessionRowContextMenu: View {
         } label: {
             Label("Rename", systemImage: "pencil")
         }
-        .disabled(isViewingCachedData || isRenamingSession || !hasServerSessionID(session))
+        .disabled(!canShowSessionMutationActions || isRenamingSession)
 
         Button {
             actions.duplicate(session)
         } label: {
             Label("Duplicate", systemImage: "doc.on.doc")
         }
-        .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
+        .disabled(!canShowSessionMutationActions || isMutating)
 
         Menu {
             SessionProjectMoveMenu(
@@ -558,7 +622,7 @@ struct SessionRowContextMenu: View {
         } label: {
             Label("Move to Project", systemImage: "folder")
         }
-        .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
+        .disabled(!canShowSessionMutationActions || isMutating)
 
         Button {
             actions.archive(session)
@@ -576,7 +640,10 @@ struct SessionRowContextMenu: View {
     }
 
     private var canShowSessionMutationActions: Bool {
-        !isViewingCachedData && hasServerSessionID(session)
+        !isViewingCachedData
+            && hasServerSessionID(session)
+            && !session.isReadOnlySession
+            && !session.isSubagentSession
     }
 }
 

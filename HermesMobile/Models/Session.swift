@@ -171,6 +171,12 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let sessionSource: String?
     let sourceLabel: String?
     let matchType: String?
+    let parentSessionId: String?
+    let relationshipType: String?
+    let parentTitle: String?
+    let readOnly: Bool?
+    let isReadOnly: Bool?
+    let sidebarReferenceSessions: [SessionSummary]?
 
     init(
         sessionId: String? = nil,
@@ -195,7 +201,13 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         sourceTag: String? = nil,
         sessionSource: String? = nil,
         sourceLabel: String? = nil,
-        matchType: String? = nil
+        matchType: String? = nil,
+        parentSessionId: String? = nil,
+        relationshipType: String? = nil,
+        parentTitle: String? = nil,
+        readOnly: Bool? = nil,
+        isReadOnly: Bool? = nil,
+        sidebarReferenceSessions: [SessionSummary]? = nil
     ) {
         self.sessionId = sessionId
         self.title = title
@@ -220,6 +232,12 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.sessionSource = sessionSource
         self.sourceLabel = sourceLabel
         self.matchType = matchType
+        self.parentSessionId = parentSessionId
+        self.relationshipType = relationshipType
+        self.parentTitle = parentTitle
+        self.readOnly = readOnly
+        self.isReadOnly = isReadOnly
+        self.sidebarReferenceSessions = sidebarReferenceSessions
     }
 
     init(from detail: SessionDetail) {
@@ -246,6 +264,12 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         sessionSource = nil
         sourceLabel = nil
         matchType = nil
+        parentSessionId = nil
+        relationshipType = nil
+        parentTitle = nil
+        readOnly = nil
+        isReadOnly = nil
+        sidebarReferenceSessions = nil
     }
 
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
@@ -274,7 +298,13 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             sourceTag: sourceTag,
             sessionSource: sessionSource,
             sourceLabel: sourceLabel,
-            matchType: matchType
+            matchType: matchType,
+            parentSessionId: parentSessionId,
+            relationshipType: relationshipType,
+            parentTitle: parentTitle,
+            readOnly: readOnly,
+            isReadOnly: isReadOnly,
+            sidebarReferenceSessions: sidebarReferenceSessions
         )
     }
 }
@@ -286,6 +316,39 @@ extension SessionSummary {
     /// source marker (`session_source` / `source_tag` / `source_label`) or a
     /// `cron_`-prefixed session id. Tolerant — a row with no cron markers is
     /// treated as a normal session, so unknown/missing fields never hide it.
+    var isReadOnlySession: Bool {
+        readOnly == true || isReadOnly == true
+    }
+
+    var isChildSession: Bool {
+        guard normalizedParentSessionId != nil else { return false }
+        return normalizedRelationshipType == "child_session"
+            || normalizedRelationshipType == "child"
+            || isSubagentSession
+    }
+
+    var isSubagentSession: Bool {
+        let markers = [relationshipType, sessionSource, sourceTag, sourceLabel]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
+        return markers.contains { marker in
+            marker == "subagent"
+                || marker == "sub_agent"
+                || marker == "child_session"
+                || marker.contains("subagent")
+        }
+    }
+
+    var normalizedParentSessionId: String? {
+        guard let parentSessionId else { return nil }
+        let trimmed = parentSessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var normalizedRelationshipType: String? {
+        relationshipType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     var isCronSession: Bool {
         if let sessionId = sessionId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
