@@ -175,6 +175,54 @@ final class TranscriptMessageTests: XCTestCase {
 }
 
 final class ChatTranscriptDisplaySettingsTests: XCTestCase {
+    func testReasoningDisplayGroupsConsolidateConsecutiveAssistantTurnBlocks() {
+        let messages = [
+            ChatMessage(role: "user", content: "Do the thing", timestamp: 1, messageId: "user-1"),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 2,
+                messageId: "assistant-1",
+                reasoning: "First thought."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: nil,
+                timestamp: 3,
+                messageId: "assistant-2",
+                reasoning: "Second thought."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "Done with the requested work.",
+                timestamp: 4,
+                messageId: "assistant-3",
+                reasoning: """
+                First thought.
+                Second thought.
+                Final thought.
+
+                Done with the requested work.
+                """
+            )
+        ]
+
+        let groups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups.first?.anchorMessageID, "assistant-1")
+        XCTAssertEqual(
+            groups.first?.text,
+            """
+            First thought.
+
+            Second thought.
+
+            Final thought.
+            """
+        )
+    }
+
     func testTypingIndicatorStaysHiddenBehindVisibleThinkingAndToolCards() {
         XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
             hasActiveStream: true,

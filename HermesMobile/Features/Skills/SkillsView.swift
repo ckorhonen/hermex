@@ -34,7 +34,11 @@ struct SkillsView: View {
             .task {
                 await loadSkills()
             }
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills...")
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search skills..."
+            )
             .zoraBrandedScreen()
     }
 
@@ -45,50 +49,42 @@ struct SkillsView: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading && viewModel.skills.isEmpty {
-            ProgressView("Loading skills...")
+            ZoraLoadingStateView(title: "Loading skills...")
         } else if let errorMessage = viewModel.errorMessage, viewModel.skills.isEmpty {
-            ContentUnavailableView {
-                Label("Could Not Load Skills", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await loadSkills() }
-                }
+            ZoraUnavailableStateView(
+                title: "Could Not Load Skills",
+                systemImage: "exclamationmark.triangle",
+                message: errorMessage,
+                actionTitle: "Try Again"
+            ) {
+                Task { await loadSkills() }
             }
         } else if viewModel.skills.isEmpty {
-            ContentUnavailableView {
-                Label("No Skills", systemImage: "hammer")
-            } description: {
-                Text("Skills from the Hermes server will appear here.")
-            }
+            ZoraUnavailableStateView(
+                title: "No Skills",
+                systemImage: "hammer",
+                message: "Skills from the Hermes server will appear here."
+            )
         } else if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && filteredGroups.isEmpty {
-            ContentUnavailableView {
-                Label("No Results", systemImage: "magnifyingglass")
-            } description: {
-                Text("No skills match \"\(searchText)\".")
-            }
+            ZoraUnavailableStateView(
+                title: "No Results",
+                systemImage: "magnifyingglass",
+                message: "No skills match \"\(searchText)\"."
+            )
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
-                    ForEach(filteredGroups, id: \.category) { group in
-                        SkillCategorySection(
-                            category: group.category,
-                            skills: group.skills,
-                            server: server,
-                            onAPIError: onAPIError
-                        )
-                    }
+            ZoraScrollContent(spacing: 24) {
+                ForEach(filteredGroups, id: \.category) { group in
+                    SkillCategorySection(
+                        category: group.category,
+                        skills: group.skills,
+                        server: server,
+                        onAPIError: onAPIError
+                    )
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 32)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable {
                 await loadSkills()
             }
-            .background(Color.clear)
         }
     }
 
@@ -108,11 +104,7 @@ private struct SkillCategorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(category)
-                .textCase(.uppercase)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+            ZoraSectionHeader(category)
 
             VStack(spacing: 0) {
                 ForEach(Array(skills.enumerated()), id: \.offset) { index, skill in
@@ -128,9 +120,7 @@ private struct SkillCategorySection: View {
                     .buttonStyle(.plain)
 
                     if index < skills.count - 1 {
-                        Divider()
-                            .overlay(ZoraBrand.listDivider)
-                            .padding(.leading, 58)
+                        ZoraDivider(leadingPadding: 58)
                     }
                 }
             }
@@ -236,42 +226,37 @@ struct SkillDetailView: View {
     @ViewBuilder
     private var content: some View {
         if isLoading && detail == nil {
-            ProgressView("Loading skill...")
+            ZoraLoadingStateView(title: "Loading skill...")
         } else if let errorMessage, detail == nil {
-            ContentUnavailableView {
-                Label("Could Not Load Skill", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await loadDetail() }
-                }
+            ZoraUnavailableStateView(
+                title: "Could Not Load Skill",
+                systemImage: "exclamationmark.triangle",
+                message: errorMessage,
+                actionTitle: "Try Again"
+            ) {
+                Task { await loadDetail() }
             }
         } else if let detail {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let content = detail.content, !content.isEmpty {
-                        MarkdownRenderer(content: content)
-                            .padding(.horizontal)
-                    }
-
-                    if let linkedFiles = detail.linkedFiles, !linkedFiles.isEmpty {
-                        SkillLinkedFilesSection(
-                            fileNames: linkedFiles,
-                            onSelect: { fileName in
-                                Task { await loadLinkedFile(named: fileName) }
-                            }
-                        )
-                    }
+            ZoraScrollContent(spacing: 16, topPadding: 16) {
+                if let content = detail.content, !content.isEmpty {
+                    MarkdownRenderer(content: content)
                 }
-                .padding(.vertical)
+
+                if let linkedFiles = detail.linkedFiles, !linkedFiles.isEmpty {
+                    SkillLinkedFilesSection(
+                        fileNames: linkedFiles,
+                        onSelect: { fileName in
+                            Task { await loadLinkedFile(named: fileName) }
+                        }
+                    )
+                }
             }
         } else {
-            ContentUnavailableView {
-                Label("No Content", systemImage: "doc.text")
-            } description: {
-                Text("This skill has no content.")
-            }
+            ZoraUnavailableStateView(
+                title: "No Content",
+                systemImage: "doc.text",
+                message: "This skill has no content."
+            )
         }
     }
 
@@ -311,10 +296,7 @@ private struct SkillLinkedFilesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Linked Files")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
+            ZoraSectionHeader("Linked Files", horizontalPadding: 20)
 
             VStack(spacing: 0) {
                 ForEach(Array(fileNames.enumerated()), id: \.element) { index, fileName in
@@ -345,9 +327,7 @@ private struct SkillLinkedFilesSection: View {
                     .buttonStyle(.plain)
 
                     if index < fileNames.count - 1 {
-                        Divider()
-                            .overlay(ZoraBrand.listDivider)
-                            .padding(.leading, 54)
+                        ZoraDivider(leadingPadding: 54)
                     }
                 }
             }
@@ -366,18 +346,17 @@ struct SkillLinkedFileView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading file...")
+                ZoraLoadingStateView(title: "Loading file...")
             } else if let content, !content.isEmpty {
-                ScrollView {
+                ZoraScrollContent(topPadding: 16) {
                     MarkdownRenderer(content: content)
-                        .padding()
                 }
             } else {
-                ContentUnavailableView {
-                    Label("No Content", systemImage: "doc.text")
-                } description: {
-                    Text("This file appears to be empty.")
-                }
+                ZoraUnavailableStateView(
+                    title: "No Content",
+                    systemImage: "doc.text",
+                    message: "This file appears to be empty."
+                )
             }
         }
         .navigationTitle(fileName)

@@ -1408,11 +1408,18 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertEqual(groups.first?.activityTitle, "Activity: 2 tools")
         XCTAssertEqual(groups.first?.toolCalls.map(\.id), ["functions.terminal:1", "functions.search_files:2"])
         XCTAssertEqual(groups.first?.toolCalls.map(\.name), ["terminal", "search_files"])
-        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["raw:5", "raw:7", "raw:9"])
-        XCTAssertEqual(reasoningGroups[0].text, "The user wants me to use terminal and search_files. I should run a quick command to show both work.")
-        XCTAssertEqual(reasoningGroups[1].text, "Terminal works. Now run search_files to show that works too.")
-        XCTAssertTrue(reasoningGroups[2].text.contains("Both tools worked. I should give a concise summary."))
-        XCTAssertFalse(reasoningGroups[2].text.contains(finalAnswer))
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["raw:5"])
+        XCTAssertEqual(
+            reasoningGroups.first?.text,
+            """
+            The user wants me to use terminal and search_files. I should run a quick command to show both work.
+
+            Terminal works. Now run search_files to show that works too.
+
+            Both tools worked. I should give a concise summary.
+            """
+        )
+        XCTAssertFalse(reasoningGroups.first?.text.contains(finalAnswer) == true)
     }
 
     func testPartialPersistedToolCallsMergeMissingMessageToolCalls() {

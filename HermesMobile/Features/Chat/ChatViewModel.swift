@@ -4668,21 +4668,7 @@ extension ChatViewModel {
             }
         }
 
-        var latestCandidateIndexByKey: [String: Int] = [:]
-        for (index, candidate) in candidates.enumerated() {
-            latestCandidateIndexByKey["\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"] = index
-        }
-
-        return candidates.enumerated().compactMap { index, candidate in
-            let key = "\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"
-            guard latestCandidateIndexByKey[key] == index else { return nil }
-
-            return ReasoningGroup(
-                id: "reasoning-\(candidate.anchorMessageID ?? "unanchored")-\(candidate.order)",
-                anchorMessageID: candidate.anchorMessageID,
-                text: candidate.text
-            )
-        }
+        return consolidatedReasoningGroups(from: candidates)
     }
 
     nonisolated static func transcriptMessages(from messages: [ChatMessage], messageOffset: Int? = nil) -> [TranscriptMessage] {
@@ -4770,6 +4756,37 @@ extension ChatViewModel {
             )
         )
         order += 1
+    }
+
+    nonisolated private static func consolidatedReasoningGroups(from candidates: [ReasoningDisplayCandidate]) -> [ReasoningGroup] {
+        var builders: [ReasoningDisplayGroupBuilder] = []
+        var builderIndexesByTurnKey: [String: Int] = [:]
+        var latestCandidateIndexByKey: [String: Int] = [:]
+
+        for (index, candidate) in candidates.enumerated() {
+            latestCandidateIndexByKey["\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"] = index
+        }
+
+        for (index, candidate) in candidates.enumerated() {
+            let key = "\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"
+            guard latestCandidateIndexByKey[key] == index else { continue }
+
+            if let builderIndex = builderIndexesByTurnKey[candidate.turnKey] {
+                builders[builderIndex].append(candidate.text)
+            } else {
+                builderIndexesByTurnKey[candidate.turnKey] = builders.count
+                builders.append(ReasoningDisplayGroupBuilder(candidate: candidate))
+            }
+        }
+
+        return builders.compactMap { builder in
+            guard let text = nonEmptyReasoningText(builder.text) else { return nil }
+            return ReasoningGroup(
+                id: "reasoning-\(builder.anchorMessageID ?? "unanchored")-\(builder.order)",
+                anchorMessageID: builder.anchorMessageID,
+                text: text
+            )
+        }
     }
 
     nonisolated private static func reasoningTexts(from message: ChatMessage) -> [String] {
@@ -4882,6 +4899,51 @@ private struct ReasoningDisplayCandidate {
     let anchorMessageID: String?
     let turnKey: String
     let text: String
+}
+
+private struct ReasoningDisplayGroupBuilder {
+    let order: Int
+    let anchorMessageID: String?
+    private(set) var lines: [String]
+    private var normalizedLines: Set<String>
+
+    var text: String {
+        lines.joined(separator: "\n\n")
+    }
+
+    init(candidate: ReasoningDisplayCandidate) {
+        order = candidate.order
+        anchorMessageID = candidate.anchorMessageID
+        lines = []
+        normalizedLines = []
+        append(candidate.text)
+    }
+
+    mutating func append(_ text: String) {
+        for line in Self.displayLines(from: text) {
+            let normalizedLine = Self.normalizedLine(line)
+            guard !normalizedLine.isEmpty, !normalizedLines.contains(normalizedLine) else {
+                continue
+            }
+
+            normalizedLines.insert(normalizedLine)
+            lines.append(line)
+        }
+    }
+
+    private static func displayLines(from text: String) -> [String] {
+        text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func normalizedLine(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
 }
 
 private extension ToolCall {

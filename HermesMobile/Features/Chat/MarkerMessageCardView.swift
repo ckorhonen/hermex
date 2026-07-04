@@ -32,11 +32,7 @@ struct MarkerMessageCardView: View {
             )
 
             if isExpanded {
-                Text(cardBody.isEmpty ? kind.title : cardBody)
-                    .font(AppFont.caption())
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                expandedBody(cardBody)
                     .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
@@ -59,6 +55,28 @@ struct MarkerMessageCardView: View {
         case .compressionReference:
             return "star"
         }
+    }
+
+    @ViewBuilder
+    private func expandedBody(_ cardBody: String) -> some View {
+        if kind == .preservedTaskList {
+            let items = ChatMarkerMessageClassifier.preservedTaskListItems(in: cardBody)
+            if items.isEmpty {
+                fallbackBody(cardBody)
+            } else {
+                PreservedTaskListBodyView(items: items, reduceMotion: reduceMotion)
+            }
+        } else {
+            fallbackBody(cardBody)
+        }
+    }
+
+    private func fallbackBody(_ cardBody: String) -> some View {
+        Text(cardBody.isEmpty ? kind.title : cardBody)
+            .font(AppFont.caption())
+            .foregroundStyle(.primary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func header(summary: String) -> some View {
