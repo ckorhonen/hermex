@@ -463,7 +463,7 @@ private struct ChatCodeBlock: View {
     let isStreaming: Bool
 
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    private let wrapsCodeBlockLines = false
     @State private var didCopy = false
     @State private var highlightedCode: NSAttributedString?
 
@@ -473,21 +473,9 @@ private struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(displayLanguage)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
 
                 Spacer()
-
-                Button {
-                    wrapsCodeBlockLines.toggle()
-                } label: {
-                    Image(systemName: wrapsCodeBlockLines ? "arrow.turn.down.left" : "arrow.left.and.right")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 36, height: 36)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(SwiftUI.Color.primary)
-                .accessibilityLabel(wrapsCodeBlockLines ? "Disable code line wrapping" : "Enable code line wrapping")
 
                 Button {
                     UIPasteboard.general.string = content
@@ -496,7 +484,7 @@ private struct ChatCodeBlock: View {
                     impact.impactOccurred()
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "square.on.square")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(AppFont.title3(weight: .semibold))
                     .frame(width: 36, height: 36)
                     .contentTransition(.symbolEffect(.replace))
                 }
@@ -669,8 +657,8 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: 13, weight: .regular, design: .monospaced))
-        .foregroundStyle(.primary)
+        .font(AppFont.mono(style: .caption))
+        .foregroundStyle(ZoraBrand.paper.opacity(0.88))
     }
 
     private func combinedText(for line: MarkdownPlainCodeLine) -> Text {
@@ -707,6 +695,7 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
+        .font(AppFont.mono(style: .caption))
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
@@ -1153,12 +1142,11 @@ enum MarkdownCodeHighlighter {
 
         switch decision {
         case .highlight(_, .splashSwift):
-            return .highlighted(
-                SplashSwiftCodeHighlighter.highlightedAttributedString(
-                    for: request.code,
-                    colorScheme: request.colorScheme
-                )
+            let highlighted = SplashSwiftCodeHighlighter.highlightedAttributedString(
+                for: request.code,
+                colorScheme: request.colorScheme
             )
+            return .highlighted(MarkdownCodePalette.normalized(highlighted))
         case .highlight(let normalizedLanguage, .highlightr):
             guard let highlighted = StableHighlightrStore.shared.highlight(
                 request.code,
@@ -1168,7 +1156,7 @@ enum MarkdownCodeHighlighter {
                 return .plain(reason: .highlighterUnavailable, normalizedLanguage: normalizedLanguage)
             }
 
-            return .highlighted(highlighted)
+            return .highlighted(MarkdownCodePalette.normalized(highlighted))
         case .plain(let reason, let normalizedLanguage):
             return .plain(reason: reason, normalizedLanguage: normalizedLanguage)
         }
@@ -1185,6 +1173,59 @@ private enum SplashSwiftCodeHighlighter {
             format: AttributedStringOutputFormat(theme: theme)
         )
         return highlighter.highlight(code)
+    }
+}
+
+private enum MarkdownCodePalette {
+    static func normalized(_ attributedString: NSAttributedString) -> NSAttributedString {
+        let output = NSMutableAttributedString(attributedString: attributedString)
+        let fullRange = NSRange(location: 0, length: output.length)
+
+        output.enumerateAttribute(.foregroundColor, in: fullRange) { value, range, _ in
+            let opacity = opacity(from: value as? UIColor)
+            output.addAttribute(.foregroundColor, value: creamColor(opacity: opacity), range: range)
+        }
+        output.removeAttribute(.backgroundColor, range: fullRange)
+        output.removeAttribute(.font, range: fullRange)
+
+        return output
+    }
+
+    private static func opacity(from color: UIColor?) -> CGFloat {
+        guard let color else { return 0.88 }
+
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return 0.88
+        }
+
+        // Preserve a hint of token hierarchy from the original syntax theme, but
+        // collapse all hue into the cream/ink palette requested by the style guide.
+        let luma = (0.299 * red) + (0.587 * green) + (0.114 * blue)
+        return min(0.96, max(0.58, (0.58 + (luma * 0.32)) * alpha))
+    }
+
+    private static func creamColor(opacity: CGFloat) -> UIColor {
+        UIColor { traits in
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(
+                    red: 254.0 / 255.0,
+                    green: 240.0 / 255.0,
+                    blue: 219.0 / 255.0,
+                    alpha: opacity
+                )
+            }
+
+            return UIColor(
+                red: 34.0 / 255.0,
+                green: 25.0 / 255.0,
+                blue: 20.0 / 255.0,
+                alpha: opacity
+            )
+        }
     }
 }
 
@@ -1229,7 +1270,7 @@ private struct PlainMarkdownFallbackView: View {
 
     var body: some View {
         Text(verbatim: content)
-            .font(.body)
+            .font(AppFont.voice())
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
@@ -1247,17 +1288,94 @@ private extension MarkdownUI.Theme {
             .text {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
-                FontSize(16)
+                FontFamily(.system(.serif))
+                FontStyle(.italic)
             }
             .link {
                 ForegroundColor(ZoraBrand.paper.opacity(0.85))
                 UnderlineStyle(.single)
             }
             .code {
+                FontFamily(.system(.default))
                 FontFamilyVariant(.monospaced)
+                FontStyle(.normal)
                 FontSize(.em(0.88))
                 ForegroundColor(ZoraBrand.foreground)
                 BackgroundColor(ZoraBrand.inlineCodeFill)
+            }
+            .heading1 { configuration in
+                VStack(alignment: .leading, spacing: 0) {
+                    configuration.label
+                        .relativePadding(.bottom, length: .em(0.3))
+                        .relativeLineSpacing(.em(0.125))
+                        .markdownMargin(top: 24, bottom: 16)
+                        .markdownTextStyle {
+                            FontFamily(.system(.default))
+                            FontStyle(.normal)
+                            FontWeight(.semibold)
+                            FontSize(.em(2))
+                        }
+                    Divider().overlay(ZoraBrand.codeBlockStroke)
+                }
+            }
+            .heading2 { configuration in
+                VStack(alignment: .leading, spacing: 0) {
+                    configuration.label
+                        .relativePadding(.bottom, length: .em(0.3))
+                        .relativeLineSpacing(.em(0.125))
+                        .markdownMargin(top: 24, bottom: 16)
+                        .markdownTextStyle {
+                            FontFamily(.system(.default))
+                            FontStyle(.normal)
+                            FontWeight(.semibold)
+                            FontSize(.em(1.5))
+                        }
+                    Divider().overlay(ZoraBrand.codeBlockStroke)
+                }
+            }
+            .heading3 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.125))
+                    .markdownMargin(top: 24, bottom: 16)
+                    .markdownTextStyle {
+                        FontFamily(.system(.default))
+                        FontStyle(.normal)
+                        FontWeight(.semibold)
+                        FontSize(.em(1.25))
+                    }
+            }
+            .heading4 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.125))
+                    .markdownMargin(top: 24, bottom: 16)
+                    .markdownTextStyle {
+                        FontFamily(.system(.default))
+                        FontStyle(.normal)
+                        FontWeight(.semibold)
+                    }
+            }
+            .heading5 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.125))
+                    .markdownMargin(top: 24, bottom: 16)
+                    .markdownTextStyle {
+                        FontFamily(.system(.default))
+                        FontStyle(.normal)
+                        FontWeight(.semibold)
+                        FontSize(.em(0.875))
+                    }
+            }
+            .heading6 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.125))
+                    .markdownMargin(top: 24, bottom: 16)
+                    .markdownTextStyle {
+                        FontFamily(.system(.default))
+                        FontStyle(.normal)
+                        FontWeight(.semibold)
+                        FontSize(.em(0.85))
+                        ForegroundColor(SwiftUI.Color.secondary)
+                    }
             }
             .codeBlock { configuration in
                 MathFenceOrCodeBlock(
@@ -1281,6 +1399,8 @@ private extension MarkdownUI.Theme {
                 ) {
                     configuration.label
                         .markdownTextStyle {
+                            FontFamily(.system(.default))
+                            FontStyle(.normal)
                             if configuration.row == 0 {
                                 FontWeight(.semibold)
                             }

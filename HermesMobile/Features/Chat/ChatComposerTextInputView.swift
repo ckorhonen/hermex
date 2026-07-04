@@ -32,7 +32,8 @@ struct ComposerTextInputView: View {
             .padding(.horizontal, 16)
 
             if text.isEmpty {
-                Text("Ask anything... /commands")
+                Text("What's on your mind?")
+                    .font(AppFont.body())
                     .foregroundStyle(Color(.placeholderText))
                     .padding(.horizontal, 16)
                     .padding(.vertical, verticalPadding)

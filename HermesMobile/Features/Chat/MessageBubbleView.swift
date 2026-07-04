@@ -130,7 +130,7 @@ struct MessageBubbleView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .font(AppFont.footnote())
+        .font(AppFont.monoDigit(style: .footnote))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(assistantTurnHeaderAccessibilityLabel)
     }
@@ -198,7 +198,7 @@ struct MessageBubbleView: View {
     private var userBubble: some View {
         VStack(alignment: .trailing, spacing: 6) {
             Text(verbatim: userBubbleText)
-                .font(.body)
+                .font(AppFont.body())
                 .lineLimit(isUserBubbleExpanded ? nil : Self.collapsedUserBubbleLineLimit)
                 .textSelection(.enabled)
 

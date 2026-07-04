@@ -364,10 +364,10 @@ struct ZoraHeaderWordmark: View {
                 .frame(width: 54, height: 28)
 
             Text("Zora")
-                .font(.system(size: 31, weight: .regular, design: .serif))
-                .italic()
-                .tracking(-0.62)
+                .font(AppFont.voice(style: .largeTitle))
                 .foregroundStyle(foreground)
+                .tracking(-0.62)
+                .lineLimit(1)
                 .minimumScaleFactor(0.82)
         }
         .frame(width: 156, height: 44, alignment: .leading)

@@ -1,6 +1,10 @@
 import SwiftUI
 
 enum AppFont {
+    static func largeTitle(weight: Font.Weight? = nil) -> Font {
+        system(.largeTitle, weight: weight)
+    }
+
     static func body(weight: Font.Weight? = nil) -> Font {
         system(.body, weight: weight)
     }
@@ -43,6 +47,16 @@ enum AppFont {
 
     static func mono(style: Font.TextStyle = .body, weight: Font.Weight? = nil) -> Font {
         system(style, design: .monospaced, weight: weight)
+    }
+
+    /// Warm assistant prose: Dynamic Type-scaled New York via SwiftUI's serif
+    /// design, set in italic for the Samantha/Zora voice treatment.
+    static func voice(style: Font.TextStyle = .body, weight: Font.Weight? = nil) -> Font {
+        system(style, design: .serif, weight: weight).italic()
+    }
+
+    static func monoDigit(style: Font.TextStyle = .body, weight: Font.Weight? = nil) -> Font {
+        mono(style: style, weight: weight).monospacedDigit()
     }
 
     private static func system(
