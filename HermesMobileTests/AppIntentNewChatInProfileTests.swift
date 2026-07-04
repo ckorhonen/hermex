@@ -37,6 +37,17 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(HermesDeepLink.profileName(fromNewChatInProfile: url), name)
     }
 
+    func testProfilePayloadCanCarryPromptModelAndProvider() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat-profile?profile=dev&prompt=Review%20this&model=spark-qwen&provider=spark"))
+
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertEqual(payload.profileName, "dev")
+        XCTAssertEqual(payload.initialPrompt, "Review this")
+        XCTAssertEqual(payload.model, "spark-qwen")
+        XCTAssertEqual(payload.modelProvider, "spark")
+        XCTAssertFalse(payload.autoStartsVoiceInput)
+    }
+
     func testProfileNameIsTrimmedOnBuildAndRead() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatInProfileURL(profileName: "  dev  "))
         XCTAssertEqual(HermesDeepLink.profileName(fromNewChatInProfile: url), "dev")
@@ -84,6 +95,13 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
 
     func testNewChatRequestCarriesProfileName() {
         XCTAssertEqual(NewChatRequest(profileName: "dev").profileName, "dev")
+    }
+
+    func testNewChatRequestDefaultsToNoPromptModelOrProvider() {
+        let request = NewChatRequest()
+        XCTAssertEqual(request.initialDraft, "")
+        XCTAssertNil(request.modelName)
+        XCTAssertNil(request.modelProviderName)
     }
 
     func testNewChatRequestVoiceAndProfileAreIndependent() {

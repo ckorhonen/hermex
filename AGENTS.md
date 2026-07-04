@@ -21,6 +21,10 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   `chore/` or `fix/`). Issue/triage/domain conventions live in `docs/agents/`.
 - `master` is the protected release-candidate branch (the source for internal
   TestFlight builds): keep it buildable, never do feature work on it.
+- Every PR needs an explicit deploy-impact classification. For app-only/no-deploy-impact
+  changes, keep the diff to iOS app/docs/tests, verify any API shape against upstream or
+  a running server, and call out in the PR that no server/Worker/signing/App Store Connect
+  or infra deploy is required. If that scope changes, say so before pushing/releasing.
 - Pushing a branch, opening/updating a PR, or merging needs explicit human approval.
   Default all GitHub work to the fork remote (`origin`, currently `ckorhonen/hermex`).
   Never open an upstream PR, push to `upstream`, merge from/to `upstream`, or retarget a

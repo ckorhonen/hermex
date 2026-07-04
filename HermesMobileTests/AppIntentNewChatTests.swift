@@ -46,9 +46,50 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertNil(HermesDeepLink.sessionID(from: url))
     }
 
+    func testNewChatLaunchURLCarriesPromptModelProviderAndProfile() throws {
+        let url = try XCTUnwrap(HermesDeepLink.newChatLaunchURL(
+            prompt: "Audit this Wiki App",
+            model: "spark-qwen",
+            modelProvider: "spark",
+            profileName: "dev"
+        ))
+
+        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
+        XCTAssertEqual(url.host, HermesDeepLink.newChatHost)
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertEqual(payload.initialPrompt, "Audit this Wiki App")
+        XCTAssertEqual(payload.model, "spark-qwen")
+        XCTAssertEqual(payload.modelProvider, "spark")
+        XCTAssertEqual(payload.profileName, "dev")
+        XCTAssertFalse(payload.autoStartsVoiceInput)
+    }
+
+    func testNewChatPayloadAcceptsMessageAliasAndSnakeCaseProvider() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat?message=Draft%20it&model=claude&model_provider=anthropic"))
+
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertEqual(payload.initialPrompt, "Draft it")
+        XCTAssertEqual(payload.model, "claude")
+        XCTAssertEqual(payload.modelProvider, "anthropic")
+    }
+
+    func testNewChatPayloadTrimsBlankQueryValues() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat?prompt=%20%20&model=%20&provider=spark"))
+
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertNil(payload.initialPrompt)
+        XCTAssertNil(payload.model)
+        XCTAssertEqual(payload.modelProvider, "spark")
+    }
+
     func testForeignSchemeIsNotANewChatURL() throws {
         let url = try XCTUnwrap(URL(string: "https://new-chat"))
         XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
+    }
+
+    func testForeignURLDoesNotProduceNewChatPayload() throws {
+        let url = try XCTUnwrap(URL(string: "https://new-chat?prompt=Nope"))
+        XCTAssertNil(HermesDeepLink.newChatPayload(from: url))
     }
 
     @MainActor
@@ -108,6 +149,18 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertNil(HermesDeepLink.sessionID(from: url))
     }
 
+    func testNewChatVoicePayloadKeepsAutoStartWithPrompt() throws {
+        let url = try XCTUnwrap(HermesDeepLink.newChatLaunchURL(
+            prompt: "Start from my voice note",
+            autoStartsVoiceInput: true
+        ))
+
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertEqual(url.host, HermesDeepLink.newChatVoiceHost)
+        XCTAssertEqual(payload.initialPrompt, "Start from my voice note")
+        XCTAssertTrue(payload.autoStartsVoiceInput)
+    }
+
     func testSessionURLIsNotAVoiceURL() throws {
         let session = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "abc123"))
         XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(session))
@@ -135,5 +188,19 @@ final class AppIntentNewChatTests: XCTestCase {
 
     func testNewChatRequestCarriesVoiceFlag() {
         XCTAssertTrue(NewChatRequest(autoStartsVoiceInput: true).autoStartsVoiceInput)
+    }
+
+    func testNewChatRequestCarriesInitialPromptModelAndProvider() {
+        let request = NewChatRequest(
+            initialDraft: "Audit this Wiki App",
+            profileName: "dev",
+            modelName: "spark-qwen",
+            modelProviderName: "spark"
+        )
+
+        XCTAssertEqual(request.initialDraft, "Audit this Wiki App")
+        XCTAssertEqual(request.profileName, "dev")
+        XCTAssertEqual(request.modelName, "spark-qwen")
+        XCTAssertEqual(request.modelProviderName, "spark")
     }
 }
