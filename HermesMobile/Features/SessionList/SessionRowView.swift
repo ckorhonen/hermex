@@ -172,7 +172,8 @@ struct SessionRowView: View {
     private var titleAndPin: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(displayTitle)
-                .font(isNestedChild ? AppFont.subheadline(weight: .semibold) : AppFont.headline(weight: .semibold))
+                .font(AppFont.voice(style: isNestedChild ? .subheadline : .headline, weight: .medium))
+                .tracking(0.15)
                 .foregroundStyle(isNestedChild ? ZoraBrand.secondaryForeground : ZoraBrand.foreground)
                 .lineLimit(titleLineLimit)
                 .truncationMode(.tail)

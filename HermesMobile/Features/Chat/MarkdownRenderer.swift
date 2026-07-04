@@ -405,7 +405,7 @@ private struct ChatMarkdownView: View {
             .markdownBlockStyle(\.paragraph) { configuration in
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
-                    .relativeLineSpacing(.em(0.18))
+                    .relativeLineSpacing(.em(AppFont.voiceRelativeLineSpacing))
                     .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownBlock)
             }
             .markdownBlockStyle(\.blockquote) { configuration in

@@ -55,6 +55,10 @@ enum AppFont {
         system(style, design: .serif, weight: weight).italic()
     }
 
+    /// Extra leading for italic serif prose. Keeps the voice treatment legible
+    /// in dense assistant responses without loosening tables or code blocks.
+    static let voiceRelativeLineSpacing: CGFloat = 0.22
+
     static func monoDigit(style: Font.TextStyle = .body, weight: Font.Weight? = nil) -> Font {
         mono(style: style, weight: weight).monospacedDigit()
     }
