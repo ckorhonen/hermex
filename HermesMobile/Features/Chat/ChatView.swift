@@ -2160,14 +2160,14 @@ struct ChatToolbarTitleLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.voice(style: .body))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             if showsSubtitle, let subtitle {
                 Text(subtitle)
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)

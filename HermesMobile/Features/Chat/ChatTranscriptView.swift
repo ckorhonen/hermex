@@ -104,6 +104,7 @@ struct ChatTranscriptView: View {
                 Image(systemName: "bubble.left.and.bubble.right")
             } description: {
                 Text("Send a message to start the conversation.")
+                    .font(AppFont.voice())
             }
             .contentShape(Rectangle())
             .onTapGesture {

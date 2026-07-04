@@ -26,7 +26,8 @@ struct ContextWindowIndicatorView: View {
                         .rotationEffect(.degrees(-90))
 
                     Text("\(Int(percentage * 100))")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(AppFont.monoDigit(style: .caption2, weight: .semibold))
+                        .minimumScaleFactor(0.55)
                         .foregroundStyle(.primary)
                 }
                 .frame(width: ringSize, height: ringSize)
@@ -64,8 +65,7 @@ private struct ContextWindowPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(ContextWindowFormatter.tokensLabel(from: snapshot))
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .font(AppFont.monoDigit(style: .subheadline, weight: .semibold))
 
             Divider()
 
@@ -104,12 +104,11 @@ private struct ContextWindowInfoRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(.caption)
-                .fontWeight(.medium)
+                .font(AppFont.monoDigit(style: .caption, weight: .medium))
         }
     }
 }
