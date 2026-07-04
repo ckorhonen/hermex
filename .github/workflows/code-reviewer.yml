@@ -18,10 +18,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # The reviewer action lives in a private repo, which public repos cannot
+      # resolve directly. Check it out with a fine-grained PAT (contents:read
+      # on ckorhonen/code-reviewer) stored as CODE_REVIEWER_READ_TOKEN. Until
+      # that secret exists, this job no-ops cleanly.
+      - name: Gate on reviewer token
+        id: gate
+        env:
+          TOKEN: ${{ secrets.CODE_REVIEWER_READ_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "CODE_REVIEWER_READ_TOKEN not set; skipping review (see workflow comments)."
+          fi
       - uses: actions/checkout@v6
+        if: ${{ steps.gate.outputs.enabled == 'true' }}
         with:
           fetch-depth: 0
-      - uses: ckorhonen/code-reviewer@main
+      - name: Check out reviewer action
+        if: ${{ steps.gate.outputs.enabled == 'true' }}
+        uses: actions/checkout@v6
+        with:
+          repository: ckorhonen/code-reviewer
+          token: ${{ secrets.CODE_REVIEWER_READ_TOKEN }}
+          path: .code-reviewer-action
+      - name: Run Code Reviewer
+        if: ${{ steps.gate.outputs.enabled == 'true' }}
+        uses: ./.code-reviewer-action
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
           github_token: ${{ github.token }}
