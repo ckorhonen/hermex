@@ -63,74 +63,60 @@ struct TasksView: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading && viewModel.jobs.isEmpty {
-            ProgressView("Loading automations...")
+            ZoraLoadingStateView(title: "Loading automations...")
         } else if let errorMessage = viewModel.errorMessage, viewModel.jobs.isEmpty {
-            ContentUnavailableView {
-                Label("Could Not Load Automations", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await loadAutomations() }
-                }
+            ZoraUnavailableStateView(
+                title: "Could Not Load Automations",
+                systemImage: "exclamationmark.triangle",
+                message: errorMessage,
+                actionTitle: "Try Again"
+            ) {
+                Task { await loadAutomations() }
             }
         } else if viewModel.jobs.isEmpty {
-            ContentUnavailableView {
-                Label("No Automations", systemImage: "calendar.badge.clock")
-            } description: {
-                Text("Scheduled automations from the Hermes server will appear here.")
-            }
+            ZoraUnavailableStateView(
+                title: "No Automations",
+                systemImage: "calendar.badge.clock",
+                message: "Scheduled automations from the Hermes server will appear here."
+            )
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    runningSummaryRow
-                        .padding(.bottom, 22)
+            ZoraScrollContent(spacing: 0) {
+                runningSummaryRow
+                    .padding(.bottom, 22)
 
-                    Text("Scheduled Automations")
-                        .textCase(.uppercase)
-                        .font(AppFont.caption(weight: .semibold))
-                        .foregroundStyle(ZoraBrand.secondaryForeground)
-                        .padding(.horizontal, 4)
-                        .padding(.bottom, 8)
+                ZoraSectionHeader("Scheduled Automations")
+                    .padding(.bottom, 8)
 
-                    ForEach(Array(viewModel.jobs.enumerated()), id: \.element.id) { index, job in
-                        NavigationLink {
-                            TaskDetailView(
-                                job: job,
-                                runningElapsed: viewModel.runningElapsed(for: job),
-                                server: server,
-                                onAPIError: onAPIError,
-                                onMutation: { mutation in
-                                    viewModel.apply(mutation)
-                                }
-                            )
-                        } label: {
-                            CronJobRowView(
-                                job: job,
-                                runningElapsed: viewModel.runningElapsed(for: job)
-                            )
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                ForEach(Array(viewModel.jobs.enumerated()), id: \.element.id) { index, job in
+                    NavigationLink {
+                        TaskDetailView(
+                            job: job,
+                            runningElapsed: viewModel.runningElapsed(for: job),
+                            server: server,
+                            onAPIError: onAPIError,
+                            onMutation: { mutation in
+                                viewModel.apply(mutation)
+                            }
+                        )
+                    } label: {
+                        CronJobRowView(
+                            job: job,
+                            runningElapsed: viewModel.runningElapsed(for: job)
+                        )
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
-                        if index < viewModel.jobs.count - 1 {
-                            Divider()
-                                .overlay(ZoraBrand.listDivider)
-                        }
+                    if index < viewModel.jobs.count - 1 {
+                        ZoraDivider()
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 32)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .zoraAdaptiveContentFrame(.readablePage)
             }
             .refreshable {
                 await loadAutomations()
             }
-            .background(Color.clear)
         }
     }
 
@@ -192,9 +178,9 @@ private struct CronJobRowView: View {
 
             Spacer(minLength: 8)
 
-            StatusBadge(
-                text: runningElapsed == nil ? job.status.label : String(localized: "Running"),
-                color: statusColor
+            ZoraStatusPill(
+                runningElapsed == nil ? job.status.label : String(localized: "Running"),
+                tone: statusTone
             )
         }
         .padding(.vertical, 6)
@@ -223,20 +209,20 @@ private struct CronJobRowView: View {
         return schedule
     }
 
-    private var statusColor: Color {
+    private var statusTone: ZoraStatusTone {
         if runningElapsed != nil {
-            return .blue
+            return .accent
         }
 
         switch job.status {
         case .active:
-            return .green
+            return .success
         case .paused, .off:
-            return .orange
+            return .warning
         case .error:
-            return .red
+            return .danger
         case .needsAttention:
-            return .yellow
+            return .warning
         }
     }
 
@@ -427,21 +413,5 @@ struct CronJobMetadataRow: View {
         Text(value)
             .foregroundStyle(.primary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-    }
-}
-
-struct StatusBadge: View {
-    let text: String
-    let color: Color
-
-    var body: some View {
-        Text(text)
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color.opacity(0.12), in: Capsule())
-            .lineLimit(1)
     }
 }
