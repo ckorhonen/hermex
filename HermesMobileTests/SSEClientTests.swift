@@ -92,6 +92,81 @@ final class SSEClientTests: XCTestCase {
         )
     }
 
+    func testSSEClientDeliversBurstOfEventsInFIFOOrder() async throws {
+        // A single chunk carrying many events exercises the ordered delivery
+        // pipeline: one consumer task must hand them to the callback strictly
+        // in decode order, never interleaved or reordered across hops.
+        let tokens = (1...20).map { "token-\($0)" }
+        let burst = tokens.map { "event: token\ndata: {\"text\":\"\($0)\"}\n\n" }.joined()
+            + "event: done\ndata: {\"usage\":{}}\n\n"
+        DelayedSSEURLProtocol.configure(chunks: [
+            DelayedSSEChunk(text: burst, delayNanoseconds: 0)
+        ])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedSSEURLProtocol.self]
+        let client = SSEClient(urlSessionConfiguration: configuration)
+        let doneEvent = expectation(description: "received done event")
+        var receivedEvents: [SSEEvent] = []
+
+        client.start(url: URL(string: "https://example.test/api/chat/stream?stream_id=stream-order")!) { event in
+            receivedEvents.append(event)
+            if case .done = event {
+                doneEvent.fulfill()
+            }
+        }
+
+        await fulfillment(of: [doneEvent], timeout: 2)
+        client.stop()
+
+        XCTAssertEqual(receivedEvents.count, tokens.count + 1)
+        XCTAssertEqual(
+            Array(receivedEvents.prefix(tokens.count)),
+            tokens.map { SSEEvent.token($0) }
+        )
+        guard case .done = receivedEvents.last else {
+            XCTFail("Expected trailing done event, got \(String(describing: receivedEvents.last))")
+            return
+        }
+    }
+
+    func testSSEClientErrorBehindTokensDoesNotPreemptThem() async throws {
+        // A server error event lands right behind a burst of tokens, and the
+        // connection then fails outright. Everything flows through the same
+        // ordered pipeline, so every token must reach the callback before the
+        // error — never after it — and the failing transport must not drop the
+        // queued tokens. (The connection failure itself surfaces no event: the
+        // config's connectionErrorHandler shuts down, which skips onError.)
+        let tokens = (1...10).map { "token-\($0)" }
+        let burst = tokens.map { "event: token\ndata: {\"text\":\"\($0)\"}\n\n" }.joined()
+            + "event: error\ndata: {\"error\":\"server exploded\"}\n\n"
+        DelayedSSEURLProtocol.configure(
+            chunks: [DelayedSSEChunk(text: burst, delayNanoseconds: 0)],
+            finalError: URLError(.networkConnectionLost)
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedSSEURLProtocol.self]
+        let client = SSEClient(urlSessionConfiguration: configuration)
+        let errorEvent = expectation(description: "received error event")
+        var receivedEvents: [SSEEvent] = []
+
+        client.start(url: URL(string: "https://example.test/api/chat/stream?stream_id=stream-error")!) { event in
+            receivedEvents.append(event)
+            if case .error = event {
+                errorEvent.fulfill()
+            }
+        }
+
+        await fulfillment(of: [errorEvent], timeout: 2)
+        client.stop()
+
+        XCTAssertEqual(receivedEvents.count, tokens.count + 1)
+        XCTAssertEqual(
+            Array(receivedEvents.prefix(tokens.count)),
+            tokens.map { SSEEvent.token($0) }
+        )
+        XCTAssertEqual(receivedEvents.last, .error("server exploded"))
+    }
+
     func testDecodesToolStartedEventFromUpstreamPayload() {
         let event = SSEEventDecoder.decode(
             eventType: "tool",
@@ -467,13 +542,15 @@ private struct DelayedSSEChunk {
 private final class DelayedSSEURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var chunks: [DelayedSSEChunk] = []
+    private static var finalError: URLError?
     private static var lastRequest: URLRequest?
 
     private var loadingTask: Task<Void, Never>?
 
-    static func configure(chunks: [DelayedSSEChunk]) {
+    static func configure(chunks: [DelayedSSEChunk], finalError: URLError? = nil) {
         lock.lock()
         self.chunks = chunks
+        self.finalError = finalError
         lastRequest = nil
         lock.unlock()
     }
@@ -481,6 +558,7 @@ private final class DelayedSSEURLProtocol: URLProtocol {
     static func reset() {
         lock.lock()
         chunks = []
+        finalError = nil
         lastRequest = nil
         lock.unlock()
     }
@@ -501,9 +579,11 @@ private final class DelayedSSEURLProtocol: URLProtocol {
 
     override func startLoading() {
         let chunks: [DelayedSSEChunk]
+        let finalError: URLError?
         Self.lock.lock()
         Self.lastRequest = request
         chunks = Self.chunks
+        finalError = Self.finalError
         Self.lock.unlock()
 
         guard let url = request.url,
@@ -534,7 +614,11 @@ private final class DelayedSSEURLProtocol: URLProtocol {
             }
 
             guard !Task.isCancelled else { return }
-            client?.urlProtocolDidFinishLoading(self)
+            if let finalError {
+                client?.urlProtocol(self, didFailWithError: finalError)
+            } else {
+                client?.urlProtocolDidFinishLoading(self)
+            }
         }
     }
 

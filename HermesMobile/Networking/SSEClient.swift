@@ -14,6 +14,8 @@ protocol SSEStreamingClient: AnyObject {
 final class SSEClient: SSEStreamingClient {
     private let baseConfiguration: URLSessionConfiguration
     private var eventSource: EventSource?
+    /// The single consumer draining the per-connection delivery pipeline.
+    private var deliveryTask: Task<Void, Never>?
     private(set) var lastEventID: String?
     /// Read at stream start so a new stream picks up the latest headers (#255).
     private let customHeaderProvider: @MainActor () -> [CustomHeader]
@@ -30,12 +32,28 @@ final class SSEClient: SSEStreamingClient {
         stop()
         lastEventID = nil
 
-        let handler = SSEEventHandler(
-            onEventID: { [weak self] eventID in
-                self?.lastEventID = eventID
-            },
-            onEvent: onEvent
+        // Every decoded event — and any transport error, as a terminal element —
+        // flows through ONE unbounded AsyncStream drained by ONE long-lived
+        // main-actor task, so delivery is FIFO by construction: tokens can't
+        // reorder and an error queued behind tokens can't overtake them, unlike
+        // the independent unstructured tasks this replaces.
+        let (events, continuation) = AsyncStream.makeStream(
+            of: SSEDeliveredEvent.self,
+            bufferingPolicy: .unbounded
         )
+        deliveryTask = Task { @MainActor [weak self] in
+            for await delivered in events {
+                // stop() cancels this task on the main actor, so a cancelled
+                // consumer never delivers a stale element mid-flight.
+                guard !Task.isCancelled, let self else { return }
+                if let eventID = delivered.eventID {
+                    self.lastEventID = eventID
+                }
+                onEvent(delivered.event)
+            }
+        }
+
+        let handler = SSEEventHandler(continuation: continuation)
         var config = EventSource.Config(handler: handler, url: url)
         config.connectionErrorHandler = { _ in .shutdown }
         // Custom headers merged underneath the built-ins so the built-ins win on
@@ -61,6 +79,8 @@ final class SSEClient: SSEStreamingClient {
     func stop() {
         eventSource?.stop()
         eventSource = nil
+        deliveryTask?.cancel()
+        deliveryTask = nil
     }
 }
 
@@ -178,9 +198,13 @@ struct SSEEventDecoder {
         category: "SSEEventDecoder"
     )
 
+    /// Shared across events: allocating a fresh decoder per event is wasted work
+    /// on the hot streaming path. Safe to share — decode(from:) doesn't mutate
+    /// the decoder and nothing reconfigures this instance after creation.
+    nonisolated(unsafe) private static let decoder = JSONDecoder()
+
     static func decode(eventType: String, data: String) -> SSEEvent {
         let eventData = Data(data.utf8)
-        let decoder = JSONDecoder()
 
         switch eventType {
         case "token":
@@ -304,40 +328,48 @@ private extension String {
     }
 }
 
-private final class SSEEventHandler: EventHandler {
-    private let onEventID: @MainActor (String) -> Void
-    private let onEvent: @MainActor (SSEEvent) -> Void
+/// One decoded event plus the SSE event ID it arrived with, queued through the
+/// ordered delivery pipeline.
+private struct SSEDeliveredEvent {
+    let eventID: String?
+    let event: SSEEvent
+}
 
-    init(
-        onEventID: @escaping @MainActor (String) -> Void,
-        onEvent: @escaping @MainActor (SSEEvent) -> Void
-    ) {
-        self.onEventID = onEventID
-        self.onEvent = onEvent
+private final class SSEEventHandler: EventHandler {
+    private let continuation: AsyncStream<SSEDeliveredEvent>.Continuation
+
+    init(continuation: AsyncStream<SSEDeliveredEvent>.Continuation) {
+        self.continuation = continuation
     }
 
     func onOpened() {}
 
-    func onClosed() {}
+    func onClosed() {
+        // Deliberately does NOT finish the pipeline: on a clean server close
+        // EventSource silently reconnects with Last-Event-Id and resumes
+        // delivering through this same handler. SSEClient.stop() cancels the
+        // consumer task, which is the real teardown.
+    }
 
     func onMessage(eventType: String, messageEvent: MessageEvent) {
+        // Decoding (including DonePayload) stays on the EventSource callback
+        // queue, off the main actor; only delivery hops to the main actor.
         let event = SSEEventDecoder.decode(eventType: eventType, data: messageEvent.data)
+        let eventID = messageEvent.lastEventId.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        Task { @MainActor in
-            let eventID = messageEvent.lastEventId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !eventID.isEmpty {
-                onEventID(eventID)
-            }
-            onEvent(event)
-        }
+        continuation.yield(SSEDeliveredEvent(eventID: eventID.isEmpty ? nil : eventID, event: event))
     }
 
     func onComment(comment: String) {}
 
     func onError(error: Error) {
-        Task { @MainActor in
-            onEvent(.transportError(error.localizedDescription))
-        }
+        // Terminal element in the SAME pipeline: the error queues behind any
+        // not-yet-delivered events instead of overtaking them. (Note the config's
+        // connectionErrorHandler answers .shutdown, and LDSwiftEventSource skips
+        // onError entirely for shutdown actions — this stays as defense in depth
+        // should that config ever change.)
+        continuation.yield(SSEDeliveredEvent(eventID: nil, event: .transportError(error.localizedDescription)))
+        continuation.finish()
     }
 }
 
@@ -366,6 +398,15 @@ struct DoneStreamEvent: Equatable {
 
 private struct DonePayload: Decodable {
     let event: DoneStreamEvent
+
+    // Shared across events (see SSEEventDecoder.decoder for the rationale);
+    // neither instance is reconfigured after creation.
+    nonisolated(unsafe) private static let sessionEncoder = JSONEncoder()
+    nonisolated(unsafe) private static let sessionDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
 
     enum CodingKeys: String, CodingKey {
         case usage
@@ -397,10 +438,8 @@ private struct DonePayload: Decodable {
             return nil
         }
 
-        let data = try JSONEncoder().encode(value)
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(SessionDetail.self, from: data)
+        let data = try sessionEncoder.encode(value)
+        return try sessionDecoder.decode(SessionDetail.self, from: data)
     }
 }
 

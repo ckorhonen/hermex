@@ -474,6 +474,69 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testLateEventsFromSupersededConnectionAreIgnored() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-a")
+        streamClient.emit(toConnectionAt: 0, .token("A live token"))
+        coordinator.suspendActiveStreamConnection()
+        coordinator.start(streamID: "stream-b")
+
+        // Events already enqueued by connection A can outlive streamClient.stop();
+        // a late done/cancel/token from A must not finalize or touch run B.
+        streamClient.emit(toConnectionAt: 0, .done(DoneStreamEvent()))
+        streamClient.emit(toConnectionAt: 0, .cancelled)
+        streamClient.emit(toConnectionAt: 0, .token("A late token"))
+
+        XCTAssertEqual(coordinator.activeStreamID, "stream-b")
+        XCTAssertTrue(liveActivityManager.ends.isEmpty)
+        XCTAssertTrue(delegate.completedNeedsTranscriptRefreshValues.isEmpty)
+        XCTAssertEqual(delegate.finishCount, 0)
+        XCTAssertEqual(delegate.tokens, ["A live token"])
+
+        // Connection B is unaffected and still completes normally.
+        streamClient.emit(toConnectionAt: 1, .token("B token"))
+        streamClient.emit(toConnectionAt: 1, .done(DoneStreamEvent()))
+
+        XCTAssertEqual(delegate.tokens, ["A live token", "B token"])
+        XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertEqual(delegate.completedNeedsTranscriptRefreshValues, [true])
+        XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
+    }
+
+    @MainActor
+    func testDoneFollowedByStreamEndOnSameConnectionStillFinishesStream() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.streamEnd)
+
+        // The superseded-connection guard must not swallow the natural
+        // done -> stream_end tail of the SAME connection: finalizing the run
+        // bumps the run generation, but the connection itself is still current.
+        XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertEqual(delegate.completedNeedsTranscriptRefreshValues, [true])
+        XCTAssertEqual(delegate.finishCount, 1)
+        XCTAssertEqual(delegate.refreshTitleCount, 1)
+        XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
+    }
+
+    @MainActor
     func testCancelDoesNotFinishReplacementStreamWhenResponseReturnsLate() async throws {
         let cancelRequestStarted = expectation(description: "cancel request started")
         let releaseCancelResponse = DispatchSemaphore(value: 0)
@@ -727,21 +790,35 @@ private final class CoordinatorSpySSEStreamingClient: SSEStreamingClient {
     private(set) var startedURLs: [URL] = []
     private(set) var stopCount = 0
     private(set) var lastEventID: String?
-    private var onEvent: (@MainActor (SSEEvent) -> Void)?
+    // One handler per start() call, in order, so tests can replay late events
+    // through the handler of an earlier, superseded connection.
+    private var startedHandlers: [@MainActor (SSEEvent) -> Void] = []
 
     func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {
         startedURLs.append(url)
         lastEventID = nil
-        self.onEvent = onEvent
+        startedHandlers.append(onEvent)
     }
 
     func stop() {
         stopCount += 1
     }
 
+    /// Delivers through the most recent connection's handler.
     func emit(_ event: SSEEvent, lastEventID: String? = nil) {
         self.lastEventID = lastEventID
-        onEvent?(event)
+        startedHandlers.last?(event)
+    }
+
+    /// Delivers through the handler captured for the `index`-th start() call —
+    /// e.g. a late event still queued from a stopped/superseded connection.
+    func emit(toConnectionAt index: Int, _ event: SSEEvent, lastEventID: String? = nil) {
+        guard startedHandlers.indices.contains(index) else {
+            XCTFail("No connection was started at index \(index)")
+            return
+        }
+        self.lastEventID = lastEventID
+        startedHandlers[index](event)
     }
 }
 

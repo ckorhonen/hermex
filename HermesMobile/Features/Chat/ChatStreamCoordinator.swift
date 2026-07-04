@@ -96,6 +96,15 @@ final class ChatStreamCoordinator {
     // transcript load so a concurrent cancel/completion during the load can't be
     // double-finalized (PR #266 review #2).
     private var runGeneration = 0
+    // The run generation stamped on the live SSE connection when start() opened
+    // it. Each start() bumps runGeneration first, so this uniquely identifies a
+    // connection even when the same streamID reconnects. handle() drops events
+    // whose stamp doesn't match: callbacks already enqueued by a superseded
+    // connection survive streamClient.stop(), and a late .done/.cancelled from
+    // the old connection must not finalize the run that replaced it. (Unlike
+    // runGeneration this is NOT bumped on finalize, so a same-connection
+    // .streamEnd arriving after .done still runs finishStream().)
+    private var liveConnectionGeneration = 0
 
     init(
         client: APIClient,
@@ -136,6 +145,7 @@ final class ChatStreamCoordinator {
     ) {
         hasCompletedCurrentResponse = false
         runGeneration &+= 1
+        liveConnectionGeneration = runGeneration
         activeStreamID = streamID
         isConnectionSuspended = false
         if replayAfterSeq == nil {
@@ -147,13 +157,14 @@ final class ChatStreamCoordinator {
             recoveryState: recoveryState
         )
         startLiveActivity(streamID: streamID)
+        let connectionGeneration = liveConnectionGeneration
         streamClient.start(
             url: client.chatStreamURL(
                 streamID: streamID,
                 replayAfterSeq: replayAfterSeq
             )
         ) { [weak self] event in
-            self?.handle(event)
+            self?.handle(event, connectionGeneration: connectionGeneration)
         }
         delegate?.streamCoordinatorStartAuxiliaryMonitoring()
     }
@@ -390,7 +401,12 @@ final class ChatStreamCoordinator {
         return max(0, sequence)
     }
 
-    private func handle(_ event: SSEEvent) {
+    private func handle(_ event: SSEEvent, connectionGeneration: Int) {
+        // Drop events from a superseded connection: they carry the generation of
+        // the start() that opened them, and a newer start() owns handling now
+        // (see liveConnectionGeneration).
+        guard connectionGeneration == liveConnectionGeneration else { return }
+
         lastEventID = streamClient.lastEventID ?? lastEventID
 
         switch event {
