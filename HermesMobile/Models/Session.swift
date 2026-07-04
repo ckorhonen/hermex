@@ -339,6 +339,10 @@ extension SessionSummary {
         }
     }
 
+    var isSubagentListChildSession: Bool {
+        normalizedParentSessionId != nil && isChildSession
+    }
+
     var normalizedParentSessionId: String? {
         guard let parentSessionId else { return nil }
         let trimmed = parentSessionId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -380,7 +384,8 @@ struct AutomatedSessionVisibility: Equatable {
         self.showsReadOnly = showsReadOnly
     }
 
-    /// Show every kind — the app's default state.
+    /// Show every top-level automated kind — sub-agent children are always nested under
+    /// their parent chat instead of shown as standalone list rows.
     static let showAll = AutomatedSessionVisibility()
 
     /// Whether `session` should remain visible under these toggles.
@@ -389,6 +394,7 @@ struct AutomatedSessionVisibility: Equatable {
     /// every row by `_normalize_sidebar_source_flags` in `api/routes.py`); cron
     /// detection is client-side (`SessionSummary.isCronSession`).
     func shows(_ session: SessionSummary) -> Bool {
+        if session.isSubagentListChildSession { return false }
         if session.isCronSession, !showsCron { return false }
         if session.isCliSession == true, !showsCli { return false }
         if session.isReadOnlySession, !showsReadOnly { return false }
