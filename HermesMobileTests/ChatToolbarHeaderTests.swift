@@ -3,13 +3,13 @@ import XCTest
 @testable import HermesMobile
 
 final class ChatToolbarHeaderTests: XCTestCase {
-    func testSubtitleUsesWorkspaceBasenameBeforeProfile() {
+    func testSubtitleDoesNotShowWorkspaceBasename() {
         XCTAssertEqual(
             ChatToolbarSubtitleResolver.subtitle(
                 workspacePath: "/Users/example/hermes-mobile",
                 profileTitle: "Default"
             ),
-            "hermes-mobile"
+            "Default"
         )
     }
 

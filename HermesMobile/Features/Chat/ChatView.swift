@@ -2404,11 +2404,7 @@ struct ChatToolbarActionSlot<Content: View>: View {
 }
 
 enum ChatToolbarSubtitleResolver {
-    static func subtitle(workspacePath: String?, profileTitle: String?) -> String? {
-        if let workspace = nonEmpty(workspacePath) {
-            return workspace.lastPathComponentFallback
-        }
-
+    static func subtitle(workspacePath _: String?, profileTitle: String?) -> String? {
         guard let profile = nonEmpty(profileTitle), profile != "Profile" else {
             return nil
         }
