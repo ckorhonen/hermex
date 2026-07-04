@@ -27,7 +27,7 @@ final class TaskDetailViewModel {
         self.job = job
         self.runningElapsed = runningElapsed
         relatedSession = job.relatedSession
-        self.client = client ?? APIClient(baseURL: server)
+        self.client = client ?? APIClient.shared(for: server)
     }
 
     func load() async {

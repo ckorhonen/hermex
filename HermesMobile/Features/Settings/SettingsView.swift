@@ -900,7 +900,7 @@ struct SettingsView: View {
         isLoadingDefaultProfile = true
         serverSettingsError = nil
         serverUpdateState = nil
-        let client = APIClient(baseURL: server)
+        let client = APIClient.shared(for: server)
 
         do {
             let settings = try await client.settings()
@@ -955,7 +955,7 @@ struct SettingsView: View {
         }
 
         isCheckingForUpdates = true
-        let client = APIClient(baseURL: server)
+        let client = APIClient.shared(for: server)
 
         do {
             let response = try await client.updatesCheckForced()
@@ -993,7 +993,7 @@ struct SettingsView: View {
 
         updateApplyPhase = .applying
         updateApplyMessage = nil
-        let client = APIClient(baseURL: server)
+        let client = APIClient.shared(for: server)
 
         let response: UpdatesApplyResponse
         do {

@@ -496,6 +496,30 @@ final class StreamingTextFadeTests: XCTestCase {
         XCTAssertEqual(start, 30 - StreamingTextFadeWindow.maxBlocks + 1)
     }
 
+    // MARK: - Memoized markdown parse (per-frame fade bodies)
+
+    func testMemoizedMarkdownParseMatchesFreshParseAcrossStreamingAppends() {
+        // Fade blocks re-evaluate every frame under the TimelineView clock
+        // and serve their `MarkdownContent` from a memo; the cached parse
+        // must be indistinguishable from parsing the text fresh, at every
+        // step of an append-only stream and across repeated frame lookups.
+        let memo = StreamingContentMemo { MarkdownContent($0) }
+        let chunks = [
+            "Streaming **bold",
+            "** and `code` grow",
+            "s here.\n\n- item one\n- it",
+            "em two\n\n```swift\nlet x = 1\n```\ntail"
+        ]
+
+        var content = ""
+        for chunk in chunks {
+            content += chunk
+            let fresh = MarkdownContent(content)
+            XCTAssertEqual(memo.value(for: content), fresh)
+            XCTAssertEqual(memo.value(for: content), fresh, "per-frame cache hits must return the same parse")
+        }
+    }
+
     // MARK: - Renderer attach + opacity through the real MarkdownUI pipeline
 
     @MainActor

@@ -65,7 +65,7 @@ final class SessionListViewModel {
 
     init(server: URL, client: APIClient? = nil) {
         self.server = server
-        let resolvedClient = client ?? APIClient(baseURL: server)
+        let resolvedClient = client ?? APIClient.shared(for: server)
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
     }

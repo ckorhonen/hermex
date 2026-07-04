@@ -267,7 +267,7 @@ struct SkillDetailView: View {
         defer { isLoading = false }
 
         do {
-            let response = try await APIClient(baseURL: server).skillContent(name: name)
+            let response = try await APIClient.shared(for: server).skillContent(name: name)
             detail = response
         } catch {
             errorMessage = error.localizedDescription
@@ -282,7 +282,7 @@ struct SkillDetailView: View {
         defer { isLoadingFile = false }
 
         do {
-            let response = try await APIClient(baseURL: server).skillContent(name: name, file: fileName)
+            let response = try await APIClient.shared(for: server).skillContent(name: name, file: fileName)
             fileContent = response.content
         } catch {
             fileContent = String(localized: "Could not load file: \(error.localizedDescription)")

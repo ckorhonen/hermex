@@ -17,7 +17,7 @@ final class TranscriptMediaPreviewViewModel {
 
     init(server: URL, reference: TranscriptMediaReference, apiClient: APIClient? = nil) {
         self.reference = reference
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+        self.apiClient = apiClient ?? APIClient.shared(for: server)
     }
 
     var canSaveImageToPhotos: Bool {

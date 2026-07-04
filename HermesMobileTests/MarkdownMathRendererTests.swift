@@ -235,6 +235,48 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertFalse(rendered.contains(#"\arg"#))
     }
 
+    func testMemoizedMathSegmentationMatchesFreshComputationDuringStreaming() {
+        // The streaming renderer memoizes MarkdownMathSegmenter per distinct
+        // content value; the memo must be invisible even mid-stream, where an
+        // opened `$$` has no close yet (plain markdown) and later re-segments
+        // as display math once the closing delimiter arrives.
+        let memo = StreamingContentMemo { MarkdownMathSegmenter.segments(in: $0) }
+        let chunks = [
+            "Euler: ",
+            #"$$e^{i\pi}"#,
+            " + 1 = 0$$",
+            "\n\nInline $x^2$ follows.\n\n```math\n$$ fenced, not math $$\n",
+            "```\n",
+            #"\["#,
+            #"\sqrt{2}\]"#
+        ]
+
+        var content = ""
+        for chunk in chunks {
+            content += chunk
+            let fresh = MarkdownMathSegmenter.segments(in: content)
+            XCTAssertEqual(memo.value(for: content), fresh)
+            XCTAssertEqual(memo.value(for: content), fresh, "cached lookups must stay identical")
+        }
+    }
+
+    func testMemoizedInlineMathReplacementMatchesFreshComputationDuringStreaming() {
+        let memo = StreamingContentMemo { MarkdownMathFormatter.replacingInlineMath(in: $0) }
+        let chunks = [
+            "Where $m$ is count",
+            #" and $x = \frac{1}{2}$"#,
+            " plus `$code$` stays"
+        ]
+
+        var content = ""
+        for chunk in chunks {
+            content += chunk
+            let fresh = MarkdownMathFormatter.replacingInlineMath(in: content)
+            XCTAssertEqual(memo.value(for: content), fresh)
+            XCTAssertEqual(memo.value(for: content), fresh)
+        }
+    }
+
     func testMarkdownHighlightPolicyUsesSplashForNormalSwiftCode() {
         let decision = MarkdownHighlightPolicy.decision(
             for: "let value = 1",

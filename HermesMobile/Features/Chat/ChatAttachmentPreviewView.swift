@@ -290,7 +290,7 @@ final class ChatAttachmentPreviewViewModel {
     init(session: SessionSummary, server: URL, item: ChatAttachmentPreviewItem) {
         self.session = session
         self.item = item
-        apiClient = APIClient(baseURL: server)
+        apiClient = APIClient.shared(for: server)
     }
 
     func load(force: Bool = false) async {

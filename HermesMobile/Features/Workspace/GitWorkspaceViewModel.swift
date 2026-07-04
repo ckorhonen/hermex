@@ -19,7 +19,7 @@ final class GitWorkspaceViewModel {
 
     init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
         self.session = session
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+        self.apiClient = apiClient ?? APIClient.shared(for: server)
     }
 
     /// True once a status has loaded and the workspace is not a git repository
@@ -91,7 +91,7 @@ final class GitWorkspaceAvailabilityViewModel {
 
     init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
         self.session = session
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+        self.apiClient = apiClient ?? APIClient.shared(for: server)
     }
 
     @MainActor
@@ -535,7 +535,7 @@ final class GitCommitViewModel {
 
     init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
         self.session = session
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+        self.apiClient = apiClient ?? APIClient.shared(for: server)
     }
 
     var trackedFiles: [GitFile] { status?.trackedFiles ?? [] }

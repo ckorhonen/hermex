@@ -206,7 +206,7 @@ struct DefaultProfilePickerView: View {
         errorMessage = nil
 
         do {
-            let response = try await APIClient(baseURL: server).profiles()
+            let response = try await APIClient.shared(for: server).profiles()
             profiles = response.profiles ?? []
             activeProfileName = response.effectiveDefaultProfileName ?? currentDefaultProfileName
         } catch {
@@ -225,7 +225,7 @@ struct DefaultProfilePickerView: View {
         defer { isSaving = false }
 
         do {
-            let response = try await APIClient(baseURL: server).switchProfile(name: name)
+            let response = try await APIClient.shared(for: server).switchProfile(name: name)
             if let error = response.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
                 saveError = error
                 return

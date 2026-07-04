@@ -588,7 +588,7 @@ enum LiveActivityReconciler {
         guard !orphans.isEmpty else { return }
         liveActivityReconcilerLogger.notice("Checking \(orphans.count, privacy: .public) persisted Live Activity(ies) against server status")
 
-        let client = APIClient(baseURL: server)
+        let client = APIClient.shared(for: server)
         await reconcileOrphanedActivities(
             orphans: orphans,
             now: now,

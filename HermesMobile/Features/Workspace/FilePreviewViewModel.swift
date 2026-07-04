@@ -18,7 +18,7 @@ final class FilePreviewViewModel {
     init(session: SessionSummary, server: URL, path: String, apiClient: APIClient? = nil) {
         self.session = session
         self.path = path
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+        self.apiClient = apiClient ?? APIClient.shared(for: server)
     }
 
     var canExportFile: Bool {

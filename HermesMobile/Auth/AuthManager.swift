@@ -45,7 +45,7 @@ final class AuthManager {
 
     init(
         keychain: any KeychainStoring = KeychainStore(),
-        clientFactory: @escaping (URL) -> any AuthAPIClient = { APIClient(baseURL: $0) },
+        clientFactory: @escaping (URL) -> any AuthAPIClient = { APIClient.shared(for: $0) },
         probeClientFactory: @escaping (URL, [CustomHeader]) -> any AuthAPIClient = { url, headers in
             APIClient(baseURL: url, customHeaderProvider: { headers })
         },

@@ -1,5 +1,48 @@
 import Foundation
 
+/// Memoizes the most recent results of a pure `(String) -> Value` computation.
+///
+/// The streaming renderer's SwiftUI bodies re-evaluate far more often than
+/// their content changes (fade-clock frames, unrelated state churn), and
+/// helpers like `StreamingMarkdownBlockSplitter.split` or
+/// `MarkdownMathSegmenter.segments` re-scan the entire accumulated message on
+/// every call. Holding one of these boxes in `@State` (the reference is the
+/// state; its contents are just a cache) makes repeated evaluations for the
+/// same content cost a string comparison instead of a full re-scan, without
+/// changing any result: a miss always runs the exact same computation.
+///
+/// Not thread-safe — intended for a single view's body/update path on the
+/// main actor.
+final class StreamingContentMemo<Value> {
+    private let capacity: Int
+    private let compute: (String) -> Value
+    /// Most recently used first.
+    private var entries: [(content: String, value: Value)] = []
+
+    /// `capacity` is how many distinct content values stay cached; use 2 when
+    /// an `onChange(of:)` needs the old and new value of the same computation
+    /// (e.g. `advanceFadeWindow`).
+    init(capacity: Int = 1, _ compute: @escaping (String) -> Value) {
+        self.capacity = max(1, capacity)
+        self.compute = compute
+    }
+
+    func value(for content: String) -> Value {
+        if let index = entries.firstIndex(where: { $0.content == content }) {
+            let hit = entries.remove(at: index)
+            entries.insert(hit, at: 0)
+            return hit.value
+        }
+
+        let value = compute(content)
+        entries.insert((content, value), at: 0)
+        if entries.count > capacity {
+            entries.removeLast()
+        }
+        return value
+    }
+}
+
 struct StreamingMarkdownChunk: Identifiable, Equatable {
     let id: Int
     let text: String

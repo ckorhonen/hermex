@@ -20,7 +20,7 @@ final class TasksViewModel {
     private let client: APIClient
 
     init(server: URL, client: APIClient? = nil) {
-        self.client = client ?? APIClient(baseURL: server)
+        self.client = client ?? APIClient.shared(for: server)
     }
 
     func load() async {

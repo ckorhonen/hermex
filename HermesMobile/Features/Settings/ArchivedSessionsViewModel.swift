@@ -17,7 +17,7 @@ final class ArchivedSessionsViewModel {
     }
 
     init(server: URL, client: APIClient? = nil) {
-        self.client = client ?? APIClient(baseURL: server)
+        self.client = client ?? APIClient.shared(for: server)
     }
 
     func load() async {

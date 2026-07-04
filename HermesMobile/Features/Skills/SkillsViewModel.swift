@@ -12,7 +12,7 @@ final class SkillsViewModel {
     private let client: APIClient
 
     init(server: URL) {
-        client = APIClient(baseURL: server)
+        client = APIClient.shared(for: server)
     }
 
     func load() async {

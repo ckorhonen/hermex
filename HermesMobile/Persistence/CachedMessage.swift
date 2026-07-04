@@ -6,6 +6,10 @@ final class CachedMessage {
     @Attribute(.unique) var cacheKey: String
     var serverURLString: String
     var sessionID: String
+    /// Position within the cached transcript window. Deliberately *not* part
+    /// of `cacheKey`: when a message merely shifts position (e.g. one message
+    /// is inserted above it), `apply` updates this column in place instead of
+    /// the whole tail being deleted and reinserted.
     var sortIndex: Int
     var role: String?
     var content: String?

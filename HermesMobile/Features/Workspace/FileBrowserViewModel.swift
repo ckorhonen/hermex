@@ -48,7 +48,7 @@ final class FileBrowserViewModel {
 
     init(session: SessionSummary, server: URL) {
         self.session = session
-        apiClient = APIClient(baseURL: server)
+        apiClient = APIClient.shared(for: server)
     }
 
     @MainActor

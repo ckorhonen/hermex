@@ -210,57 +210,7 @@ struct ChatTranscriptView: View {
                 compressionReferenceCardView(compressionReferenceCard)
             }
 
-            ForEach(displayedTranscriptMessages) { transcriptMessage in
-                // Scope live-streaming state to the row that actually displays it.
-                // Non-anchor / non-streaming rows receive stable empty/nil values so
-                // their inputs don't change on every ~16ms flush; combined with the
-                // `.equatable()` wrapper below, SwiftUI then skips re-evaluating their
-                // (markdown-heavy) bodies while a response streams in.
-                let isReasoningAnchor = reasoningAnchorMessageID == transcriptMessage.anchorID
-                let isToolCallAnchor = toolCallAnchorMessageID == transcriptMessage.anchorID
-                let isStreamingRow = streamingAssistantMessageID != nil
-                    && transcriptMessage.message.messageId == streamingAssistantMessageID
-
-                ChatTranscriptMessageBlock(
-                    transcriptMessage: transcriptMessage,
-                    transcriptBlockSpacing: transcriptBlockSpacing,
-                    showsThinkingAndToolCards: showsThinkingAndToolCards,
-                    reasoningGroups: reasoningGroups,
-                    toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
-                    liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
-                    reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
-                    liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
-                    toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
-                    streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
-                    localAttachmentPreviews: localAttachmentPreviews[transcriptMessage.message.id],
-                    listeningMessageID: listeningMessageID,
-                    isViewingCachedData: isViewingCachedData,
-                    hasActiveStream: activeStreamID != nil,
-                    isRegeneratingMessage: isRegeneratingMessage,
-                    isEditingMessage: isEditingMessage,
-                    isForkingMessage: isForkingMessage,
-                    loadAttachmentImage: loadAttachmentImage,
-                    loadAttachmentData: loadAttachmentData,
-                    loadTranscriptMediaData: loadTranscriptMediaData,
-                    actionContext: actionContext,
-                    shouldRenderMessageRow: shouldRenderMessageRow,
-                    onPreviewAttachment: onPreviewAttachment,
-                    onPreviewTranscriptMedia: onPreviewTranscriptMedia,
-                    onToggleListening: onToggleListening,
-                    onSelectText: onSelectText,
-                    onRegenerate: onRegenerate,
-                    onEdit: onEdit,
-                    onFork: onFork,
-                    onCopy: onCopy
-                )
-                .equatable()
-                .id(transcriptMessage.renderID)
-
-                if let compressionReferenceCard,
-                   compressionReferenceCard.afterRenderID == transcriptMessage.renderID {
-                    compressionReferenceCardView(compressionReferenceCard)
-                }
-            }
+transcriptMessageBlocks
 
             transcriptLooseBlocks
             liveResponseBlocks
@@ -288,6 +238,66 @@ struct ChatTranscriptView: View {
                 ChatVerticalScrollAxisGuard()
             }
             .accessibilityHidden(true)
+        }
+    }
+
+    private var transcriptMessageBlocks: some View {
+        // Built once per body pass so each row receives only its own reasoning
+        // groups. Row equality (ChatTranscriptMessageBlock.==) then compares just
+        // that slice, so a change to one anchor's groups re-renders one row
+        // instead of invalidating every block with the full array.
+        let reasoningGroupsByAnchor = ReasoningGroupAnchorLookup(groups: reasoningGroups)
+
+        return ForEach(displayedTranscriptMessages) { transcriptMessage in
+            // Scope live-streaming state to the row that actually displays it.
+            // Non-anchor / non-streaming rows receive stable empty/nil values so
+            // their inputs don't change on every ~16ms flush; combined with the
+            // `.equatable()` wrapper below, SwiftUI then skips re-evaluating their
+            // (markdown-heavy) bodies while a response streams in.
+            let isReasoningAnchor = reasoningAnchorMessageID == transcriptMessage.anchorID
+            let isToolCallAnchor = toolCallAnchorMessageID == transcriptMessage.anchorID
+            let isStreamingRow = streamingAssistantMessageID != nil
+                && transcriptMessage.message.messageId == streamingAssistantMessageID
+
+            ChatTranscriptMessageBlock(
+                transcriptMessage: transcriptMessage,
+                transcriptBlockSpacing: transcriptBlockSpacing,
+                showsThinkingAndToolCards: showsThinkingAndToolCards,
+                reasoningGroups: reasoningGroupsByAnchor.groups(anchorMessageID: transcriptMessage.anchorID),
+                toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
+                liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
+                reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
+                liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
+                toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
+                streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
+                localAttachmentPreviews: localAttachmentPreviews[transcriptMessage.message.id],
+                listeningMessageID: listeningMessageID,
+                isViewingCachedData: isViewingCachedData,
+                hasActiveStream: activeStreamID != nil,
+                isRegeneratingMessage: isRegeneratingMessage,
+                isEditingMessage: isEditingMessage,
+                isForkingMessage: isForkingMessage,
+                loadAttachmentImage: loadAttachmentImage,
+                loadAttachmentData: loadAttachmentData,
+                loadTranscriptMediaData: loadTranscriptMediaData,
+                actionContext: actionContext,
+                shouldRenderMessageRow: shouldRenderMessageRow,
+                onPreviewAttachment: onPreviewAttachment,
+                onPreviewTranscriptMedia: onPreviewTranscriptMedia,
+                onToggleListening: onToggleListening,
+                onSelectText: onSelectText,
+                onRegenerate: onRegenerate,
+                onEdit: onEdit,
+                onFork: onFork,
+                onCopy: onCopy
+            )
+            .equatable()
+            .id(transcriptMessage.renderID)
+
+            if let compressionReferenceCard,
+               compressionReferenceCard.afterRenderID == transcriptMessage.renderID {
+                compressionReferenceCardView(compressionReferenceCard)
+            }
         }
     }
 
@@ -457,6 +467,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let transcriptMessage: TranscriptMessage
     let transcriptBlockSpacing: CGFloat
     let showsThinkingAndToolCards: Bool
+    /// Only this row's groups (already filtered to `transcriptMessage.anchorID`
+    /// by the parent's per-anchor lookup), like `toolCallGroups` below.
     let reasoningGroups: [ReasoningGroup]
     let toolCallGroups: [ToolCallGroup]
     let liveReasoningText: String
@@ -554,7 +566,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var reasoningBlocks: some View {
         if showsThinkingAndToolCards {
-            ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
+            ForEach(reasoningGroups) { group in
                 ReasoningBlockView(text: group.text)
             }
         }

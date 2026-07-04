@@ -125,7 +125,7 @@ final class InsightsViewModel {
     private let client: any InsightsDataClient
 
     init(server: URL) {
-        client = APIClient(baseURL: server)
+        client = APIClient.shared(for: server)
     }
 
     init(client: any InsightsDataClient) {

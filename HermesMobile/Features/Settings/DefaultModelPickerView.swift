@@ -195,7 +195,7 @@ struct DefaultModelPickerView: View {
         errorMessage = nil
 
         do {
-            let response = try await APIClient(baseURL: server).models()
+            let response = try await APIClient.shared(for: server).models()
             defaultModel = response.defaultModel ?? currentDefaultModel
             groups = response.catalogGroups
         } catch {
@@ -211,7 +211,7 @@ struct DefaultModelPickerView: View {
     /// catalog so newly available models appear. Failures are silent by
     /// design — the cached list stays as-is (issue #236).
     private func overlayLiveModels() async {
-        guard let live = try? await APIClient(baseURL: server).modelsLive() else { return }
+        guard let live = try? await APIClient.shared(for: server).modelsLive() else { return }
         groups = groups.mergingLiveModels(from: live)
     }
 
@@ -225,7 +225,7 @@ struct DefaultModelPickerView: View {
         selectedModel = trimmed
 
         do {
-            let response = try await APIClient(baseURL: server).saveDefaultModel(model: trimmed)
+            let response = try await APIClient.shared(for: server).saveDefaultModel(model: trimmed)
             if response.ok == true {
                 onSave(trimmed)
                 dismiss()

@@ -16,7 +16,7 @@ struct GitDiffView: View {
     init(session: SessionSummary, server: URL, file: GitFile, onAPIError: @escaping (Error) -> Void) {
         self.session = session
         self.file = file
-        self.apiClient = APIClient(baseURL: server)
+        self.apiClient = APIClient.shared(for: server)
         self.onAPIError = onAPIError
     }
 

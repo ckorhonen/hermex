@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 actor APIClient {
     let baseURL: URL
@@ -11,8 +12,10 @@ actor APIClient {
     nonisolated let redirectHeaderStripper: CrossOriginHeaderStripper
     /// Sessions this client created (vs. ones a caller injected). A `URLSession`
     /// built with a delegate keeps a strong reference to it and to itself until
-    /// invalidated, so we tear these down in `deinit` to avoid leaking them — many
-    /// `APIClient`s are created ad hoc and discarded (#277).
+    /// invalidated, so we tear these down in `deinit` to avoid leaking them —
+    /// some `APIClient`s are still created ad hoc and discarded (#277).
+    /// (Registry-cached clients — `APIClient.shared(for:)` — live for the app's
+    /// lifetime and never hit this path.)
     private let ownedSessions: [URLSession]
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -289,6 +292,69 @@ actor APIClient {
         default:
             return nil
         }
+    }
+}
+
+extension APIClient {
+    /// The process-wide shared client for `baseURL`. Use this instead of `init`
+    /// whenever a **default-configured** client is enough — it reuses one warm
+    /// `URLSession` pair per server (connection pooling, TLS session reuse)
+    /// instead of paying session setup plus a fresh TCP+TLS handshake for every
+    /// throwaway client. Callers that inject a session or a fixed header
+    /// provider (tests, `AuthManager`'s add-server probe, App Intents) keep
+    /// using `init` directly and own that client's lifetime.
+    static func shared(for baseURL: URL) -> APIClient {
+        APIClientRegistry.shared.client(for: baseURL)
+    }
+}
+
+/// Process-wide cache of **default-configured** `APIClient`s, one per normalized
+/// server base URL, backing `APIClient.shared(for:)`.
+///
+/// Only clients built with the default sessions and the default
+/// `CustomHeaderStore.shared` header provider are cached here. The provider is
+/// read per request (see `customHeaderProvider` in `APIClient`), so a cached
+/// client picks up live header edits immediately — no invalidation is needed.
+/// Cached clients intentionally live for the app's lifetime; `APIClient.deinit`
+/// still tears down sessions for the non-cached, directly-built clients.
+final class APIClientRegistry: Sendable {
+    static let shared = APIClientRegistry()
+
+    private let clients: OSAllocatedUnfairLock<[String: APIClient]>
+
+    init() {
+        clients = OSAllocatedUnfairLock(initialState: [:])
+    }
+
+    /// Returns the cached client for `baseURL`, creating it on first use.
+    func client(for baseURL: URL) -> APIClient {
+        let key = Self.cacheKey(for: baseURL)
+        return clients.withLock { cache in
+            if let cached = cache[key] {
+                return cached
+            }
+            let client = APIClient(baseURL: baseURL)
+            cache[key] = client
+            return client
+        }
+    }
+
+    /// Cache key: scheme and host lowercased (both are case-insensitive) and any
+    /// trailing slash dropped, so cosmetic variants of the same server URL share
+    /// one client. Server URLs normally arrive already canonical via
+    /// `AuthManager.normalizedServerURL`; a variant this misses (e.g. an explicit
+    /// default port) just creates a second client — a missed reuse, never a
+    /// correctness problem.
+    private static func cacheKey(for baseURL: URL) -> String {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
+            return baseURL.absoluteString
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        if components.path.hasSuffix("/") {
+            components.path = String(components.path.dropLast())
+        }
+        return components.string ?? baseURL.absoluteString
     }
 }
 

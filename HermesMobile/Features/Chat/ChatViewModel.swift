@@ -63,7 +63,11 @@ final class ChatViewModel {
     private static let messagePageLimit = 50
 
     private(set) var messages: [ChatMessage] = [] {
-        didSet { recomputeDisplayedTranscriptMessages() }
+        didSet {
+            recomputeDisplayedTranscriptMessages()
+            recomputeDisplayedReasoningGroups()
+            recomputeLatestTurnToolCalls()
+        }
     }
     /// Memoized transcript mapping, recomputed once whenever `messages` or
     /// `messagesOffset` changes. Views read this single cached value instead of
@@ -101,15 +105,24 @@ final class ChatViewModel {
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
-    private(set) var completedToolCallGroups: [ToolCallGroup] = []
+    private(set) var completedToolCallGroups: [ToolCallGroup] = [] {
+        didSet { recomputeLatestTurnToolCalls() }
+    }
     private var completedToolCallGroupLookup = ToolCallGroupAnchorLookup()
-    private(set) var completedReasoningGroups: [ReasoningGroup] = []
-    var displayedReasoningGroups: [ReasoningGroup] {
-        Self.reasoningDisplayGroups(
-            messages: messages,
-            messageOffset: messagesOffset,
-            archivedGroups: completedReasoningGroups
-        )
+    private(set) var completedReasoningGroups: [ReasoningGroup] = [] {
+        didSet { recomputeDisplayedReasoningGroups() }
+    }
+    /// Memoized reasoning display mapping, recomputed when any of its inputs
+    /// (`messages`, `messagesOffset`, `completedReasoningGroups`) mutate instead
+    /// of on every view body evaluation — the mapping does several O(n) passes
+    /// plus per-group string work, far too heavy to rerun per streaming flush tick.
+    private(set) var displayedReasoningGroups: [ReasoningGroup] = []
+    private var displayedReasoningGroupLookup = ReasoningGroupAnchorLookup()
+    /// Per-anchor slice of `displayedReasoningGroups`, mirroring
+    /// `completedToolCallGroupsForAnchor(_:)` so each transcript row can receive
+    /// only its own groups instead of filtering the full array in its body.
+    func displayedReasoningGroupsForAnchor(_ anchorMessageID: String?) -> [ReasoningGroup] {
+        displayedReasoningGroupLookup.groups(anchorMessageID: anchorMessageID)
     }
     func completedToolCallGroupsForAnchor(_ anchorMessageID: String?) -> [ToolCallGroup] {
         completedToolCallGroupLookup.groups(anchorMessageID: anchorMessageID)
@@ -120,16 +133,9 @@ final class ChatViewModel {
     /// messages (tool calls on one, the final text on the next), and the archived tool group
     /// anchors to the *first* of them — so collect every completed group in the current turn
     /// (since the last user message) plus any still-live calls, not just one anchor.
-    var latestTurnToolCalls: [ToolCall] {
-        let turnAnchors = Set(
-            TranscriptTurnClassifier.currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
-        )
-        var calls = completedToolCallGroups
-            .filter { group in group.anchorMessageID.map(turnAnchors.contains) ?? false }
-            .flatMap(\.toolCalls)
-        calls.append(contentsOf: liveToolCalls)
-        return calls
-    }
+    /// Memoized: recomputed when any of its inputs (`messages`, `messagesOffset`,
+    /// `completedToolCallGroups`, `liveToolCalls`) mutate rather than per body evaluation.
+    private(set) var latestTurnToolCalls: [ToolCall] = []
 
     private func recomputeDisplayedTranscriptMessages() {
         displayedTranscriptMessages = Self.transcriptMessages(
@@ -137,6 +143,34 @@ final class ChatViewModel {
             messageOffset: messagesOffset
         )
         recomputeCompressionReferenceCard()
+    }
+
+    private func recomputeDisplayedReasoningGroups() {
+        // Equality-guarded like recomputeCompressionReferenceCard: the overlapping
+        // triggers (messages flushes rarely change the reasoning mapping) stay
+        // observer-silent so unchanged rows are not invalidated.
+        let groups = Self.reasoningDisplayGroups(
+            messages: messages,
+            messageOffset: messagesOffset,
+            archivedGroups: completedReasoningGroups
+        )
+        guard displayedReasoningGroups != groups else { return }
+
+        displayedReasoningGroups = groups
+        displayedReasoningGroupLookup = ReasoningGroupAnchorLookup(groups: groups)
+    }
+
+    private func recomputeLatestTurnToolCalls() {
+        let turnAnchors = Set(
+            TranscriptTurnClassifier.currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
+        )
+        var calls = completedToolCallGroups
+            .filter { group in group.anchorMessageID.map(turnAnchors.contains) ?? false }
+            .flatMap(\.toolCalls)
+        calls.append(contentsOf: liveToolCalls)
+        guard latestTurnToolCalls != calls else { return }
+
+        latestTurnToolCalls = calls
     }
     /// Synthesized "Context compaction · Reference only" card resolved from the
     /// session's `compression_anchor_*` metadata; nil when the session has no
@@ -166,13 +200,19 @@ final class ChatViewModel {
 
         compressionReferenceCard = card
     }
-    private(set) var liveToolCalls: [ToolCall] = []
+    private(set) var liveToolCalls: [ToolCall] = [] {
+        didSet { recomputeLatestTurnToolCalls() }
+    }
     private(set) var liveReasoningText = ""
     private(set) var streamingAssistantMessageID: String?
     private(set) var toolCallAnchorMessageID: String?
     private(set) var reasoningAnchorMessageID: String?
     private(set) var messagesOffset = 0 {
-        didSet { recomputeDisplayedTranscriptMessages() }
+        didSet {
+            recomputeDisplayedTranscriptMessages()
+            recomputeDisplayedReasoningGroups()
+            recomputeLatestTurnToolCalls()
+        }
     }
     private(set) var hasOlderMessages = false
     private(set) var contextWindowSnapshot: ContextWindowSnapshot?
@@ -3712,13 +3752,22 @@ final class ChatViewModel {
 
         // Same append-time dedup contract as appendAssistantToken: return true iff
         // the event contributed new content, mutate only via the coalesced flush.
+        // The effective-content copy is O(content) per event, so it only happens on
+        // replay connections — the sole case where deduplicatedReplayText reads it.
         _ = ensureStreamingAssistantMessage()
-        let effectiveContent = liveReasoningText + pendingReasoningChunks.joined()
-        let remainder = deduplicatedReplayText(
-            text,
-            existingContent: effectiveContent,
-            matchedPrefixLength: &activeStreamReplayMatchedReasoningLength
-        )
+        let remainder: String
+        if isActiveStreamReplayConnection {
+            let effectiveContent = liveReasoningText + pendingReasoningChunks.joined()
+            remainder = deduplicatedReplayText(
+                text,
+                existingContent: effectiveContent,
+                matchedPrefixLength: &activeStreamReplayMatchedReasoningLength
+            )
+        } else {
+            // Mirrors deduplicatedReplayText's non-replay guard path.
+            activeStreamReplayMatchedReasoningLength = 0
+            remainder = text
+        }
         guard !remainder.isEmpty else { return false }
 
         pendingReasoningChunks.append(remainder)
@@ -3875,10 +3924,20 @@ final class ChatViewModel {
         // Dedup at append time against effective content (flushed + pending) so the
         // return value stays a synchronous progress signal for the reconnect watchdog
         // while transcript mutation stays batched behind the coalesced flush.
+        // Materializing that effective content (a full copy of the accumulated text
+        // plus a linear message scan) is O(content) per token, so it only happens on
+        // replay connections — the sole case where deduplicatedReplayToken reads it.
         let messageID = ensureStreamingAssistantMessage()
-        let flushedContent = messages.first(where: { $0.messageId == messageID })?.content ?? ""
-        let effectiveContent = flushedContent + pendingAssistantTokenChunks.joined()
-        let remainder = deduplicatedReplayToken(token, existingContent: effectiveContent)
+        let remainder: String
+        if isActiveStreamReplayConnection {
+            let flushedContent = messages.first(where: { $0.messageId == messageID })?.content ?? ""
+            let effectiveContent = flushedContent + pendingAssistantTokenChunks.joined()
+            remainder = deduplicatedReplayToken(token, existingContent: effectiveContent)
+        } else {
+            // Mirrors deduplicatedReplayToken's non-replay guard path.
+            resetActiveStreamReplayTokenState()
+            remainder = token
+        }
         guard !remainder.isEmpty else { return false }
 
         pendingAssistantTokenChunks.append(remainder)
@@ -4559,6 +4618,24 @@ struct ReasoningGroup: Identifiable, Equatable {
         self.id = id
         self.anchorMessageID = anchorMessageID
         self.text = text
+    }
+}
+
+/// Anchor-keyed index over reasoning display groups, mirroring
+/// `ToolCallGroupAnchorLookup` so per-row consumers get O(1) lookups instead of
+/// filtering the full array. `Dictionary(grouping:)` preserves the relative
+/// order of groups within each anchor, matching the previous per-row filter.
+struct ReasoningGroupAnchorLookup: Equatable {
+    private let groupsByAnchor: [String?: [ReasoningGroup]]
+
+    init(groups: [ReasoningGroup] = []) {
+        groupsByAnchor = Dictionary(grouping: groups) { group in
+            group.anchorMessageID
+        }
+    }
+
+    func groups(anchorMessageID: String?) -> [ReasoningGroup] {
+        groupsByAnchor[anchorMessageID] ?? []
     }
 }
 

@@ -48,6 +48,90 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
     }
 }
 
+/// The streaming renderer memoizes its full-content scans (block split, math
+/// segmentation) per distinct content value. These tests prove the memo is
+/// transparent: for representative streaming sequences it returns results
+/// identical to a fresh computation, and it only recomputes on new content.
+final class StreamingContentMemoTests: XCTestCase {
+    func testMemoizedBlockSplitMatchesFreshComputationAcrossAppendOnlyStream() {
+        // Capacity 2 mirrors the renderer's cache, which must serve both the
+        // old and new content compared in advanceFadeWindow. The chunks walk
+        // through paragraph growth, a heading boundary, list items, and a
+        // fence opening then closing mid-stream.
+        let memo = StreamingContentMemo(capacity: 2) { StreamingMarkdownBlockSplitter.split($0) }
+        let chunks = [
+            "Intro paragraph",
+            " keeps growing.\n\n",
+            "## Section heading\n",
+            "- item one\n- item",
+            " two\n\n```swift\nlet x",
+            " = 1\n```\n",
+            "Tail prose after the closed fence"
+        ]
+
+        var content = ""
+        for chunk in chunks {
+            content += chunk
+            let fresh = StreamingMarkdownBlockSplitter.split(content)
+            XCTAssertEqual(memo.value(for: content), fresh)
+            // Repeated body-style evaluations of the same content stay
+            // identical (served from cache, not recomputed differently).
+            XCTAssertEqual(memo.value(for: content), fresh)
+        }
+    }
+
+    func testMemoizedBlockSplitServesOldAndNewContentOfAFlush() {
+        let memo = StreamingContentMemo(capacity: 2) { StreamingMarkdownBlockSplitter.split($0) }
+        let old = "First paragraph.\n\nSecond paragraph still stre"
+        let new = old + "aming\n\nThird begins"
+
+        // Body pass for the old content, then an onChange comparing old/new,
+        // then the body pass for the new content — the renderer's sequence.
+        XCTAssertEqual(memo.value(for: old), StreamingMarkdownBlockSplitter.split(old))
+        XCTAssertEqual(memo.value(for: old).activeMarkdown, StreamingMarkdownBlockSplitter.split(old).activeMarkdown)
+        XCTAssertEqual(memo.value(for: new), StreamingMarkdownBlockSplitter.split(new))
+        XCTAssertEqual(memo.value(for: old), StreamingMarkdownBlockSplitter.split(old))
+        XCTAssertEqual(memo.value(for: new), StreamingMarkdownBlockSplitter.split(new))
+    }
+
+    func testMemoComputesOncePerDistinctContentAndEvictsBeyondCapacity() {
+        var computeCount = 0
+        let memo = StreamingContentMemo(capacity: 2) { (content: String) -> Int in
+            computeCount += 1
+            return content.count
+        }
+
+        XCTAssertEqual(memo.value(for: "a"), 1)
+        XCTAssertEqual(memo.value(for: "a"), 1)
+        XCTAssertEqual(computeCount, 1, "repeat lookups must not recompute")
+
+        XCTAssertEqual(memo.value(for: "ab"), 2)
+        XCTAssertEqual(memo.value(for: "a"), 1)
+        XCTAssertEqual(computeCount, 2, "capacity 2 keeps both recent values")
+
+        // A third distinct value evicts the least recently used ("ab").
+        XCTAssertEqual(memo.value(for: "abc"), 3)
+        XCTAssertEqual(computeCount, 3)
+        XCTAssertEqual(memo.value(for: "ab"), 2)
+        XCTAssertEqual(computeCount, 4, "evicted values are recomputed correctly")
+    }
+
+    func testMemoCapacityOneKeepsOnlyLatestValue() {
+        var computeCount = 0
+        let memo = StreamingContentMemo { (content: String) -> Int in
+            computeCount += 1
+            return content.count
+        }
+
+        XCTAssertEqual(memo.value(for: "x"), 1)
+        XCTAssertEqual(memo.value(for: "x"), 1)
+        XCTAssertEqual(computeCount, 1)
+        XCTAssertEqual(memo.value(for: "xy"), 2)
+        XCTAssertEqual(memo.value(for: "x"), 1)
+        XCTAssertEqual(computeCount, 3, "capacity 1 recomputes after content changes")
+    }
+}
+
 /// Width resolution for chat markdown table cells (issue #233). The layout
 /// itself needs a render pass to verify; this covers the pure clamp that
 /// decides the wrap width the cell height is measured at.

@@ -88,6 +88,13 @@ struct StreamingMarkdownRenderer: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var displayedContent: String
 
+    /// Full-content scans memoized per distinct content value: this body
+    /// re-evaluates more often than the content changes (fade state, scroll,
+    /// environment churn), and both helpers walk the whole accumulated
+    /// message on every call.
+    @State private var mathSegmentsMemo = StreamingContentMemo { MarkdownMathSegmenter.segments(in: $0) }
+    @State private var inlineMathMemo = StreamingContentMemo { MarkdownMathFormatter.replacingInlineMath(in: $0) }
+
     init(content: String) {
         self.content = content
         _displayedContent = State(initialValue: content)
@@ -116,7 +123,7 @@ struct StreamingMarkdownRenderer: View {
 
     @ViewBuilder
     private var streamingMarkdownContent: some View {
-        let segments = MarkdownMathSegmenter.segments(in: displayedContent)
+        let segments = mathSegmentsMemo.value(for: displayedContent)
 
         if segments.containsMath {
             VStack(alignment: .leading, spacing: 0) {
@@ -136,7 +143,7 @@ struct StreamingMarkdownRenderer: View {
             }
         } else {
             StreamingMarkdownChunkedView(
-                content: MarkdownMathFormatter.replacingInlineMath(in: displayedContent),
+                content: inlineMathMemo.value(for: displayedContent),
                 colorScheme: colorScheme
             )
         }
@@ -165,9 +172,15 @@ private struct StreamingMarkdownChunkedView: View {
     /// blocks (paragraphs, list items) appear in reading order even when a
     /// fast stream backlogs a block's queue toward `maxStampLead`.
     @State private var chain = StreamingTextFadeStampChain()
+    /// Block split memoized per distinct content value: without it the
+    /// full-content splitter ran once per body pass plus twice more (old and
+    /// new content) in `advanceFadeWindow` on every flush. Capacity 2 keeps
+    /// the previous flush's split alive so that old/new pair is two cache
+    /// hits.
+    @State private var splitMemo = StreamingContentMemo(capacity: 2) { StreamingMarkdownBlockSplitter.split($0) }
 
     private var segments: StreamingMarkdownBlockSegments {
-        StreamingMarkdownBlockSplitter.split(content)
+        splitMemo.value(for: content)
     }
 
     var body: some View {
@@ -198,11 +211,13 @@ private struct StreamingMarkdownChunkedView: View {
             }
 
             if !blockSplit.blocks.isEmpty {
-                // One shared frame clock for every fade block. Per frame only
-                // the renderer's clock input changes; each block's markdown
-                // inputs are untouched, so their bodies (and text layout) are
-                // not re-evaluated.
-                TimelineView(.animation(minimumInterval: nil, paused: !fadesActive)) { context in
+                // One shared frame clock for every fade block, capped at
+                // 60fps (the 0.35s fade doesn't need 120Hz). Each tick DOES
+                // re-evaluate every fade block's body with a new `clock`;
+                // the blocks keep that cheap by caching their parsed
+                // markdown (see `ChatMarkdownView`), so per-frame work is
+                // the fade renderer's opacity math, not a cmark re-parse.
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !fadesActive)) { context in
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(blockSplit.blocks, id: \.ordinal) { block in
                             StreamingFadeBlockView(
@@ -261,8 +276,8 @@ private struct StreamingMarkdownChunkedView: View {
 
     private func advanceFadeWindow(from oldContent: String, to newContent: String) {
         let now = Date().timeIntervalSinceReferenceDate
-        let oldActive = StreamingMarkdownBlockSplitter.split(oldContent).activeMarkdown
-        let newActive = StreamingMarkdownBlockSplitter.split(newContent).activeMarkdown
+        let oldActive = splitMemo.value(for: oldContent).activeMarkdown
+        let newActive = splitMemo.value(for: newContent).activeMarkdown
         let split = StreamingTextFadeTailSplitter.split(newActive, firstFadeOrdinal: firstFadeOrdinal)
 
         if !newActive.hasPrefix(oldActive) {
@@ -362,8 +377,15 @@ private struct ChatMarkdownView: View {
     let colorScheme: ColorScheme
     let isStreaming: Bool
 
+    /// The cmark parse of `content`, cached across body evaluations.
+    /// `Markdown(String)` parses in its initializer, and the fade window's
+    /// `TimelineView` re-evaluates streaming blocks every frame with only
+    /// the clock changed — without this cache that was a full markdown
+    /// re-parse per display frame while fades were active.
+    @State private var parsedContent = StreamingContentMemo { MarkdownContent($0) }
+
     var body: some View {
-        Markdown(content)
+        Markdown(parsedContent.value(for: content))
             .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
             .markdownTextStyle {
                 ForegroundColor(.primary)
@@ -1209,7 +1231,31 @@ private struct PlainMarkdownFallbackView: View {
 }
 
 private extension MarkdownUI.Theme {
+    /// The four chat theme variants, built once and shared. `Theme` is a
+    /// value type whose block-style closures capture nothing beyond the
+    /// `colorScheme`/`isStreaming` pair that keys the cache (MarkdownUI's own
+    /// built-in themes are shared `static let`s the same way), so handing the
+    /// same instance to every view is safe — and avoids rebuilding the whole
+    /// style configuration on every body evaluation.
+    static let chatLightStatic = makeChat(colorScheme: .light, isStreaming: false)
+    static let chatLightStreaming = makeChat(colorScheme: .light, isStreaming: true)
+    static let chatDarkStatic = makeChat(colorScheme: .dark, isStreaming: false)
+    static let chatDarkStreaming = makeChat(colorScheme: .dark, isStreaming: true)
+
     static func chat(colorScheme: ColorScheme, isStreaming: Bool) -> MarkdownUI.Theme {
+        switch (colorScheme == .dark, isStreaming) {
+        case (false, false):
+            return .chatLightStatic
+        case (false, true):
+            return .chatLightStreaming
+        case (true, false):
+            return .chatDarkStatic
+        case (true, true):
+            return .chatDarkStreaming
+        }
+    }
+
+    static func makeChat(colorScheme: ColorScheme, isStreaming: Bool) -> MarkdownUI.Theme {
         MarkdownUI.Theme.gitHub
             .text {
                 ForegroundColor(.primary)
