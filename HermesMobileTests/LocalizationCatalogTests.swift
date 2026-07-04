@@ -18,13 +18,18 @@ final class LocalizationCatalogTests: XCTestCase {
     /// project file and the languages present in `Localizable.xcstrings`.
     private static let shippedLanguages = ["de", "es", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK"]
 
-    private func catalogURL() -> URL {
+    private func resourceURL(_ relativePath: String) -> URL {
         // .../HermesMobileTests/LocalizationCatalogTests.swift
-        //   -> repo root -> HermesMobile/Resources/Localizable.xcstrings
+        //   -> repo root -> HermesMobile/Resources/<relativePath>
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // HermesMobileTests
             .deletingLastPathComponent()   // repo root
-            .appendingPathComponent("HermesMobile/Resources/Localizable.xcstrings")
+            .appendingPathComponent("HermesMobile/Resources")
+            .appendingPathComponent(relativePath)
+    }
+
+    private func catalogURL() -> URL {
+        resourceURL("Localizable.xcstrings")
     }
 
     /// True iff the language entry holds a non-empty value — either a plain `stringUnit` or
@@ -71,5 +76,20 @@ final class LocalizationCatalogTests: XCTestCase {
                           "[\(language)] \(missing.count) translatable key(s) have no value: \(missing.sorted())")
             XCTAssertGreaterThan(translated, 200, "[\(language)] Far fewer translations than expected — something dropped.")
         }
+    }
+
+    func testAppTransportSecurityAllowsTailscaleHTTPRange() throws {
+        let url = resourceURL("Info.plist")
+        guard let data = try? Data(contentsOf: url) else {
+            throw XCTSkip("Could not read Info.plist at \(url.path); skipping — the source tree is not present in this environment.")
+        }
+
+        let root = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        let ats = try XCTUnwrap(root["NSAppTransportSecurity"] as? [String: Any])
+        XCTAssertEqual(ats["NSAllowsLocalNetworking"] as? Bool, true)
+
+        let exceptionDomains = try XCTUnwrap(ats["NSExceptionDomains"] as? [String: Any])
+        let tailscaleRange = try XCTUnwrap(exceptionDomains["100.64.0.0/10"] as? [String: Any])
+        XCTAssertEqual(tailscaleRange["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true)
     }
 }

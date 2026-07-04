@@ -41,6 +41,8 @@
 	<string>$(HERMES_URL_SCHEME)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
 			<key>100.64.0.0/10</key>
