@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct MessageBubbleView: View {
+    static let collapsedUserBubbleLineLimit = 10
+    static let collapsedUserBubbleCharacterThreshold = 700
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,6 +18,8 @@ struct MessageBubbleView: View {
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
+
+    @State private var isUserBubbleExpanded = false
 
     init(
         message: ChatMessage,
@@ -188,17 +193,34 @@ struct MessageBubbleView: View {
     }
 
     private var userBubble: some View {
-        Text(verbatim: userBubbleText)
-            .font(.body)
-            .textSelection(.enabled)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(userBubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .foregroundStyle(userBubbleForeground)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(userBubbleBorder, lineWidth: 0.5)
-            )
+        VStack(alignment: .trailing, spacing: 6) {
+            Text(verbatim: userBubbleText)
+                .font(.body)
+                .lineLimit(isUserBubbleExpanded ? nil : Self.collapsedUserBubbleLineLimit)
+                .textSelection(.enabled)
+
+            if showsUserBubbleExpansionControl {
+                Button {
+                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                        isUserBubbleExpanded.toggle()
+                    }
+                } label: {
+                    Text(isUserBubbleExpanded ? String(localized: "View less") : String(localized: "View more"))
+                        .font(AppFont.caption(weight: .semibold))
+                        .foregroundStyle(ZoraBrand.selectionAccent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isUserBubbleExpanded ? String(localized: "Collapse user message") : String(localized: "Expand user message"))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(userBubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .foregroundStyle(userBubbleForeground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(userBubbleBorder, lineWidth: 0.5)
+        )
     }
 
     @ViewBuilder
@@ -366,6 +388,15 @@ struct MessageBubbleView: View {
         let content = message.content ?? ""
         guard hidesAttachmentPaths else { return content }
         return MessageAttachment.contentWithoutAttachedFilesMarker(in: content)
+    }
+
+    private var showsUserBubbleExpansionControl: Bool {
+        Self.userBubbleNeedsExpansionControl(userBubbleText)
+    }
+
+    static func userBubbleNeedsExpansionControl(_ text: String) -> Bool {
+        text.components(separatedBy: .newlines).count > collapsedUserBubbleLineLimit
+            || text.count > collapsedUserBubbleCharacterThreshold
     }
 
     private var hasVisibleUserBubbleText: Bool {
