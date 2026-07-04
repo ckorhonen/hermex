@@ -331,7 +331,7 @@ final class ChatViewModel {
         currentProfile = session.profile
         isCLISession = session.isCliSession == true
         self.server = server
-        let resolvedClient = client ?? APIClient(baseURL: server)
+        let resolvedClient = client ?? APIClient.shared(for: server)
         let resolvedStreamClient = streamClient ?? SSEClient()
         let resolvedLiveActivityManager = liveActivityManager ?? AgentLiveActivityManager.shared
         self.client = resolvedClient
