@@ -175,6 +175,22 @@ final class TranscriptMessageTests: XCTestCase {
 }
 
 final class ChatTranscriptDisplaySettingsTests: XCTestCase {
+    func testUserBubbleExpansionControlAppearsOnlyAfterCollapsedLineLimit() {
+        let tenLineMessage = Array(repeating: "line", count: MessageBubbleView.collapsedUserBubbleLineLimit)
+            .joined(separator: "\n")
+        let elevenLineMessage = Array(repeating: "line", count: MessageBubbleView.collapsedUserBubbleLineLimit + 1)
+            .joined(separator: "\n")
+
+        XCTAssertFalse(MessageBubbleView.userBubbleNeedsExpansionControl(tenLineMessage))
+        XCTAssertTrue(MessageBubbleView.userBubbleNeedsExpansionControl(elevenLineMessage))
+    }
+
+    func testUserBubbleExpansionControlAppearsForLongWrappedParagraphs() {
+        let longParagraph = String(repeating: "word ", count: 160)
+
+        XCTAssertTrue(MessageBubbleView.userBubbleNeedsExpansionControl(longParagraph))
+    }
+
     func testTypingIndicatorStaysHiddenBehindVisibleThinkingAndToolCards() {
         XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
             hasActiveStream: true,

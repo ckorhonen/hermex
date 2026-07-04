@@ -51,6 +51,12 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertFalse(SessionRowView.isActiveStreaming(SessionSummary(sessionId: "blank-stream", activeStreamId: "   ")))
     }
 
+    func testSessionRowScheduledSessionUsesCronSignals() {
+        XCTAssertTrue(SessionRowView.isScheduledSession(SessionSummary(sessionId: "cron_job123_20260702_120000")))
+        XCTAssertTrue(SessionRowView.isScheduledSession(SessionSummary(sessionId: "scheduled", sourceTag: "cron")))
+        XCTAssertFalse(SessionRowView.isScheduledSession(SessionSummary(sessionId: "regular", sourceTag: "chat")))
+    }
+
     func testSessionRowMetadataLabelUsesVisiblePartsAndWorkspaceBasename() {
         let session = SessionSummary(
             sessionId: "metadata",
@@ -88,12 +94,13 @@ final class SessionIdentityTests: XCTestCase {
             sessionId: "stateful",
             pinned: true,
             activeStreamId: "stream-123",
-            isStreaming: false
+            isStreaming: false,
+            sourceTag: "cron"
         )
 
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: session, isViewingCachedData: true),
-            ["Streaming", "Pinned", "Cached"]
+            ["Streaming", "Pinned", "Scheduled", "Cached"]
         )
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: SessionSummary(sessionId: "plain"), isViewingCachedData: false),

@@ -4,6 +4,7 @@ struct SessionRowView: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption2) private var pinnedIconSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption) private var sourceIconSize: CGFloat = 12
     @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 8
 
     let session: SessionSummary
@@ -13,10 +14,8 @@ struct SessionRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            if Self.isActiveStreaming(session) {
-                ActiveSessionStreamingIndicator()
-                    .padding(.top, streamingIndicatorTopPadding)
-            }
+            ActiveSessionStreamingIndicator(isActive: Self.isActiveStreaming(session))
+                .padding(.top, streamingIndicatorTopPadding)
 
             rowContent
         }
@@ -47,6 +46,10 @@ struct SessionRowView: View {
         session.isStreaming == true || nonEmpty(session.activeStreamId) != nil
     }
 
+    static func isScheduledSession(_ session: SessionSummary) -> Bool {
+        session.isCronSession
+    }
+
     static func metadataLabel(
         for session: SessionSummary,
         showsMessageCount: Bool,
@@ -72,6 +75,10 @@ struct SessionRowView: View {
 
         if session.pinned == true {
             labels.append(String(localized: "Pinned"))
+        }
+
+        if isScheduledSession(session) {
+            labels.append(String(localized: "Scheduled"))
         }
 
         if isViewingCachedData {
@@ -147,6 +154,13 @@ struct SessionRowView: View {
 
     private var titleAndPin: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if Self.isScheduledSession(session) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: sourceIconSize, weight: .semibold))
+                    .foregroundStyle(ZoraBrand.selectionAccent)
+                    .accessibilityHidden(true)
+            }
+
             Text(displayTitle)
                 .font(AppFont.headline(weight: .semibold))
                 .foregroundStyle(ZoraBrand.foreground)
@@ -217,10 +231,6 @@ struct SessionRowView: View {
 
     private var visibleStateBadges: [SessionRowStateBadgeKind] {
         var badges: [SessionRowStateBadgeKind] = []
-
-        if Self.isActiveStreaming(session) {
-            badges.append(.streaming)
-        }
 
         if isViewingCachedData {
             badges.append(.cached)
@@ -293,15 +303,12 @@ struct SessionRowView: View {
 }
 
 private enum SessionRowStateBadgeKind: String, Identifiable {
-    case streaming
     case cached
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .streaming:
-            return String(localized: "Live")
         case .cached:
             return String(localized: "Cached")
         }
@@ -309,8 +316,6 @@ private enum SessionRowStateBadgeKind: String, Identifiable {
 
     var tint: Color {
         switch self {
-        case .streaming:
-            return .green
         case .cached:
             return .orange
         }
@@ -347,14 +352,21 @@ private struct ActiveSessionStreamingIndicator: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
+    let isActive: Bool
+
     var body: some View {
         Circle()
             .fill(.green)
             .frame(width: 9, height: 9)
-            .scaleEffect(reduceMotion ? 1 : (isExpanded ? 1.4 : 1.0))
-            .shadow(color: Color.green.opacity(0.42), radius: 8)
+            .scaleEffect(reduceMotion || !isActive ? 1 : (isExpanded ? 1.4 : 1.0))
+            .opacity(isActive ? 1 : 0)
+            .shadow(color: Color.green.opacity(isActive ? 0.42 : 0), radius: 8)
+            .frame(width: 13, height: 13)
             .accessibilityHidden(true)
             .onAppear {
+                updateAnimation()
+            }
+            .onChange(of: isActive) {
                 updateAnimation()
             }
             .onChange(of: reduceMotion) {
@@ -366,7 +378,7 @@ private struct ActiveSessionStreamingIndicator: View {
     }
 
     private func updateAnimation() {
-        guard !reduceMotion else {
+        guard isActive, !reduceMotion else {
             isExpanded = false
             return
         }
