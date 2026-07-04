@@ -6361,6 +6361,54 @@ final class ChatViewModelSendTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testOverlappingSendsFireOnlyOneChatStart() async throws {
+        // Reentrancy contract: every sender serializes inside performChatSend. A
+        // second send arriving while one is mid-flight (e.g. a queued-slash-message
+        // drain racing a user send — the drain fires from its own Task, outside the
+        // composer's UI-level blocking) must bail instead of firing a second
+        // concurrent /api/chat/start.
+        let chatStartCount = LockedCounter()
+        let firstChatStartReceived = expectation(description: "first chat start received")
+        let releaseFirstChatStart = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            if chatStartCount.increment() == 1 {
+                firstChatStartReceived.fulfill()
+                // Hold the first start open so the second send provably overlaps it.
+                XCTAssertEqual(releaseFirstChatStart.wait(timeout: .now() + .seconds(5)), .success)
+            }
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let firstSend = Task { @MainActor in
+            await viewModel.sendMessage("First message")
+        }
+        defer { releaseFirstChatStart.signal() }
+
+        await fulfillment(of: [firstChatStartReceived], timeout: 2)
+        XCTAssertTrue(viewModel.isStartingChat)
+
+        let secondSent = await viewModel.sendMessage("Second message")
+        XCTAssertFalse(secondSent, "An overlapping send must bail on the in-flight guard.")
+
+        releaseFirstChatStart.signal()
+        let firstSent = await firstSend.value
+        XCTAssertTrue(firstSent)
+
+        XCTAssertEqual(chatStartCount.count, 1)
+        // The rejected overlapping send must not leave an optimistic bubble behind,
+        // and the composer's disabled-state flag must clear once the winner lands.
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "user" }.map(\.content), ["First message"])
+        XCTAssertFalse(viewModel.isStartingChat)
+        XCTAssertNil(viewModel.sendErrorMessage)
+    }
+
     /// Lets a `Task { @MainActor … }` enqueued by a delegate callback run to completion
     /// before assertions. Same-actor tasks run FIFO, so awaiting a task enqueued *after*
     /// the callback's drains it; the leading yields add slack.

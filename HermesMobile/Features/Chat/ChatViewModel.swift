@@ -433,7 +433,7 @@ final class ChatViewModel {
 
     func isSelectedProfile(_ profile: ProfileSummary) -> Bool {
         guard let profileName = profile.normalizedName else { return false }
-        return profileName == (Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile))
+        return profileName == (selectedProfileName.nonEmpty ?? currentProfile.nonEmpty)
     }
 
     var hasStreamingAssistantMessageContent: Bool {
@@ -543,15 +543,15 @@ final class ChatViewModel {
     }
 
     private var requestProfileName: String? {
-        Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile)
+        selectedProfileName.nonEmpty ?? currentProfile.nonEmpty
     }
 
     private var requestModelProvider: String? {
-        Self.nonEmpty(currentModelProvider)
+        currentModelProvider.nonEmpty
     }
 
     private func explicitModelPickForChatStart() -> Bool {
-        pendingExplicitModelPick && Self.nonEmpty(currentModel) != nil
+        pendingExplicitModelPick && currentModel.nonEmpty != nil
     }
 
     private func completeExplicitModelPickForChatStart(_ explicitModelPick: Bool) {
@@ -827,7 +827,7 @@ final class ChatViewModel {
 
             if let defaultModel = response.defaultModel, !defaultModel.isEmpty {
                 currentModel = defaultModel
-                currentModelProvider = Self.nonEmpty(profile.provider)
+                currentModelProvider = profile.provider.nonEmpty
             }
             pendingExplicitModelPick = false
 
@@ -1000,14 +1000,7 @@ final class ChatViewModel {
             )
             responseCompletionNeedsTranscriptRefresh = false
             isViewingCachedData = false
-            contextWindowSnapshot = ContextWindowSnapshot(
-                contextLength: session?.contextLength,
-                thresholdTokens: session?.thresholdTokens,
-                lastPromptTokens: session?.lastPromptTokens,
-                inputTokens: session?.inputTokens,
-                outputTokens: session?.outputTokens,
-                estimatedCost: session?.estimatedCost
-            )
+            contextWindowSnapshot = Self.contextWindowSnapshot(from: session)
             if let modelContext {
                 do {
                     try CacheStore.cacheMessages(messages, serverURL: server, sessionID: sessionID, in: modelContext)
@@ -1015,20 +1008,14 @@ final class ChatViewModel {
                     cacheErrorMessage = error.localizedDescription
                 }
             }
+            // Deliberately narrower than applySessionDetail: a transcript reload
+            // must not clobber the composer's workspace/model/provider selection.
             if let title = session?.title {
                 displayTitle = Self.displayTitle(from: title)
             }
-            setCompletedToolCallGroups(ToolCallGroup.groups(
-                persistedToolCalls: session?.toolCalls ?? [],
-                messages: messages,
-                messageOffset: messagesOffset
-            ))
-            completedReasoningGroups = []
-            liveToolCalls = []
-            liveReasoningText = ""
+            rebuildArchivedGroups(from: session)
+            resetLiveStreamUIState()
             pinnedLocalNotices = []
-            toolCallAnchorMessageID = nil
-            reasoningAnchorMessageID = nil
             attachmentCoordinator.removeAllLocalPreviews()
             streamCoordinator.reconcileSessionLoad(
                 loadedActiveStreamID: loadedActiveStreamID,
@@ -1057,13 +1044,12 @@ final class ChatViewModel {
                         isViewingCachedData = true
                         contextWindowSnapshot = nil
                         errorMessage = nil
+                        // Cached transcripts carry no persisted tool calls, so the
+                        // archived groups clear outright rather than rebuilding.
                         setCompletedToolCallGroups([])
                         completedReasoningGroups = []
-                        liveToolCalls = []
-                        liveReasoningText = ""
+                        resetLiveStreamUIState()
                         pinnedLocalNotices = []
-                        toolCallAnchorMessageID = nil
-                        reasoningAnchorMessageID = nil
                         streamingAssistantMessageID = nil
                         attachmentCoordinator.removeAllLocalPreviews()
                         streamCoordinator.reconcileSessionLoad(
@@ -1206,27 +1192,10 @@ final class ChatViewModel {
             responseCompletionNeedsTranscriptRefresh = false
             updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
             isViewingCachedData = false
-            contextWindowSnapshot = ContextWindowSnapshot(
-                contextLength: session.contextLength,
-                thresholdTokens: session.thresholdTokens,
-                lastPromptTokens: session.lastPromptTokens,
-                inputTokens: session.inputTokens,
-                outputTokens: session.outputTokens,
-                estimatedCost: session.estimatedCost
-            )
-            if let title = session.title {
-                displayTitle = Self.displayTitle(from: title)
-            }
-            currentWorkspace = session.workspace ?? currentWorkspace
-            currentModel = session.model ?? currentModel
-            currentModelProvider = session.modelProvider ?? currentModelProvider
-            currentProfile = session.profile ?? currentProfile
-            setCompletedToolCallGroups(ToolCallGroup.groups(
-                persistedToolCalls: session.toolCalls ?? [],
-                messages: messages,
-                messageOffset: messagesOffset
-            ))
-            completedReasoningGroups = []
+            applySessionDetail(session)
+            // No resetLiveStreamUIState() here: paging in older history can run
+            // mid-stream and must not drop the live tool-call/reasoning overlays.
+            rebuildArchivedGroups(from: session)
 
             if let modelContext {
                 do {
@@ -1378,6 +1347,80 @@ final class ChatViewModel {
         }
 
         return max(0, messageCount - loadedMessageCount)
+    }
+
+    // MARK: - Session-detail application
+
+    /// Applies the session-scoped fields every full-detail reload shares — the
+    /// context-window snapshot, title, and workspace/model/provider/profile —
+    /// keeping the current value wherever the server omits a field. Callers that
+    /// deliberately apply a smaller subset (e.g. `loadMessages`, which leaves the
+    /// composer's workspace/model selection alone, or the completed-stream path,
+    /// which routes the title through the Live Activity) compose the smaller
+    /// helpers directly instead.
+    private func applySessionDetail(_ session: SessionDetail) {
+        contextWindowSnapshot = Self.contextWindowSnapshot(from: session)
+        if let title = session.title {
+            displayTitle = Self.displayTitle(from: title)
+        }
+        applySessionIdentityFields(from: session)
+    }
+
+    /// Applies the composer-facing session identity (workspace/model/provider/
+    /// profile), keeping the current value where the server omits a field.
+    private func applySessionIdentityFields(from session: SessionDetail) {
+        currentWorkspace = session.workspace ?? currentWorkspace
+        currentModel = session.model ?? currentModel
+        currentModelProvider = session.modelProvider ?? currentModelProvider
+        currentProfile = session.profile ?? currentProfile
+    }
+
+    private static func contextWindowSnapshot(from session: SessionDetail?) -> ContextWindowSnapshot {
+        ContextWindowSnapshot(
+            contextLength: session?.contextLength,
+            thresholdTokens: session?.thresholdTokens,
+            lastPromptTokens: session?.lastPromptTokens,
+            inputTokens: session?.inputTokens,
+            outputTokens: session?.outputTokens,
+            estimatedCost: session?.estimatedCost
+        )
+    }
+
+    /// Rebuilds the archived tool-call groups from the session's persisted tool
+    /// calls against the freshly applied transcript, and clears the archived
+    /// reasoning groups — a reloaded transcript re-derives reasoning display from
+    /// the messages themselves. Call only after `messages`/`messagesOffset`
+    /// already reflect the reloaded session.
+    private func rebuildArchivedGroups(from session: SessionDetail?) {
+        setCompletedToolCallGroups(ToolCallGroup.groups(
+            persistedToolCalls: session?.toolCalls ?? [],
+            messages: messages,
+            messageOffset: messagesOffset
+        ))
+        completedReasoningGroups = []
+    }
+
+    /// Clears the live streaming overlays (in-flight tool calls, live reasoning
+    /// text, and their anchors) after a transcript replacement. Deliberately does
+    /// NOT touch `streamingAssistantMessageID`, `pinnedLocalNotices`, or the local
+    /// attachment previews — the call sites that reset those too differ, so they
+    /// layer the extra resets on top. `loadOlderMessages` deliberately skips this
+    /// helper entirely: paging older history in can happen mid-stream and must not
+    /// drop the live overlays.
+    private func resetLiveStreamUIState() {
+        liveToolCalls = []
+        liveReasoningText = ""
+        toolCallAnchorMessageID = nil
+        reasoningAnchorMessageID = nil
+    }
+
+    /// Archives any in-flight reasoning/tool-call overlays into the completed
+    /// groups, then clears the live state — the shared prologue for starting a
+    /// new response (`performChatSend`, `/retry`).
+    private func archiveAndResetLiveStreamUIState() {
+        archiveLiveReasoningIfNeeded()
+        archiveLiveToolCallsIfNeeded()
+        resetLiveStreamUIState()
     }
 
     nonisolated private static func mergingLoadedMessages(
@@ -1735,11 +1778,10 @@ final class ChatViewModel {
     @discardableResult
     func sendVoiceNote(audioData: Data, filename: String, modelContext: ModelContext? = nil) async -> Bool {
         // Reentrancy guard: bail if a voice note OR a regular chat send is already
-        // in flight. `performChatSend` has no internal guard, so two overlapping
-        // sends would both flip `isStartingChat`/`isSendingVoiceNote` and race their
-        // `defer { … = false }` (clearing the flag while the other still runs, and
-        // firing two concurrent `startChat`s). The UI already blocks this; the guard
-        // keeps a future caller (accessibility shortcut, test harness) safe too.
+        // in flight. `performChatSend` also guards `isStartingChat` at entry (all
+        // senders serialize there), but bailing here first keeps `isSendingVoiceNote`
+        // honest and avoids running the transcription and upload legs only to have
+        // the final send bounce off that guard.
         guard !isSendingVoiceNote, !isStartingChat else { return false }
         guard !isViewingCachedData else {
             setUploadAttachmentError(String(localized: "Reconnect to the server to send a voice note."))
@@ -1835,15 +1877,24 @@ final class ChatViewModel {
         attachmentsToRestoreOnFailure: [PendingAttachment],
         modelContext: ModelContext?
     ) async -> Bool {
+        // Reentrancy guard: every sender serializes here. The composer's UI-level
+        // blocking can't cover the queued-slash-message drain, which fires from its
+        // own Task and can interleave with a user send — without this guard both
+        // would flip `isStartingChat` and start two concurrent chats (and their
+        // `defer`s would race, clearing the flag under the still-running send).
+        // Check-and-set is atomic: this method runs on the main actor and there is
+        // no suspension between the read and the flip. A bailed send hands back the
+        // composer attachments its caller already consumed via prepareForSend.
+        guard !isStartingChat else {
+            attachmentCoordinator.removeLocalPreviews(messageID: localMessageID)
+            restorePendingAttachments(attachmentsToRestoreOnFailure)
+            return false
+        }
+
         isStartingChat = true
         sendErrorMessage = nil
         lastError = nil
-        archiveLiveReasoningIfNeeded()
-        archiveLiveToolCallsIfNeeded()
-        liveReasoningText = ""
-        liveToolCalls = []
-        reasoningAnchorMessageID = nil
-        toolCallAnchorMessageID = nil
+        archiveAndResetLiveStreamUIState()
         streamCoordinator.prepareForNewResponse()
         responseCompletionNeedsTranscriptRefresh = false
         defer { isStartingChat = false }
@@ -2670,33 +2721,14 @@ final class ChatViewModel {
             messages = session.messages ?? []
             updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
             isViewingCachedData = false
-            let snapshot = ContextWindowSnapshot(
-                contextLength: session.contextLength,
-                thresholdTokens: session.thresholdTokens,
-                lastPromptTokens: session.lastPromptTokens,
-                inputTokens: session.inputTokens,
-                outputTokens: session.outputTokens,
-                estimatedCost: session.estimatedCost
-            )
-            contextWindowSnapshot = snapshot.replacingTokensUsed(response.summary?.compressedTokenEstimate)
-            if let title = session.title {
-                displayTitle = Self.displayTitle(from: title)
-            }
-            currentWorkspace = session.workspace ?? currentWorkspace
-            currentModel = session.model ?? currentModel
-            currentModelProvider = session.modelProvider ?? currentModelProvider
-            currentProfile = session.profile ?? currentProfile
-            setCompletedToolCallGroups(ToolCallGroup.groups(
-                persistedToolCalls: session.toolCalls ?? [],
-                messages: messages,
-                messageOffset: messagesOffset
-            ))
-            completedReasoningGroups = []
-            liveToolCalls = []
-            liveReasoningText = ""
+            applySessionDetail(session)
+            // The compress response reports its own post-compaction token estimate;
+            // prefer it over the usage the reloaded session detail carried.
+            contextWindowSnapshot = contextWindowSnapshot?
+                .replacingTokensUsed(response.summary?.compressedTokenEstimate)
+            rebuildArchivedGroups(from: session)
+            resetLiveStreamUIState()
             streamingAssistantMessageID = nil
-            toolCallAnchorMessageID = nil
-            reasoningAnchorMessageID = nil
             streamCoordinator.prepareForNewResponse()
             responseCompletionNeedsTranscriptRefresh = false
             attachmentCoordinator.removeAllLocalPreviews()
@@ -2780,12 +2812,7 @@ final class ChatViewModel {
         isStartingChat = true
         lastError = nil
         sendErrorMessage = nil
-        archiveLiveReasoningIfNeeded()
-        archiveLiveToolCallsIfNeeded()
-        liveReasoningText = ""
-        liveToolCalls = []
-        reasoningAnchorMessageID = nil
-        toolCallAnchorMessageID = nil
+        archiveAndResetLiveStreamUIState()
         streamCoordinator.prepareForNewResponse()
         responseCompletionNeedsTranscriptRefresh = false
         defer { isStartingChat = false }
@@ -2812,12 +2839,7 @@ final class ChatViewModel {
             if let session = sessionResponse.session {
                 messages = session.messages ?? []
                 updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
-                setCompletedToolCallGroups(ToolCallGroup.groups(
-                    persistedToolCalls: session.toolCalls ?? [],
-                    messages: messages,
-                    messageOffset: messagesOffset
-                ))
-                completedReasoningGroups = []
+                rebuildArchivedGroups(from: session)
             } else {
                 await loadMessages()
                 if let lastError {
@@ -2825,10 +2847,7 @@ final class ChatViewModel {
                 }
             }
 
-            liveToolCalls = []
-            liveReasoningText = ""
-            toolCallAnchorMessageID = nil
-            reasoningAnchorMessageID = nil
+            resetLiveStreamUIState()
             attachmentCoordinator.removeAllLocalPreviews()
 
             let explicitModelPick = explicitModelPickForChatStart()
@@ -3068,16 +3087,8 @@ final class ChatViewModel {
             if let session = truncateResponse.session {
                 messages = session.messages ?? []
                 updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
-                setCompletedToolCallGroups(ToolCallGroup.groups(
-                    persistedToolCalls: session.toolCalls ?? [],
-                    messages: messages,
-                    messageOffset: messagesOffset
-                ))
-                completedReasoningGroups = []
-                liveToolCalls = []
-                liveReasoningText = ""
-                toolCallAnchorMessageID = nil
-                reasoningAnchorMessageID = nil
+                rebuildArchivedGroups(from: session)
+                resetLiveStreamUIState()
 
                 if let modelContext {
                     do {
@@ -3171,16 +3182,8 @@ final class ChatViewModel {
             if let session = truncateResponse.session {
                 messages = session.messages ?? []
                 updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
-                setCompletedToolCallGroups(ToolCallGroup.groups(
-                    persistedToolCalls: session.toolCalls ?? [],
-                    messages: messages,
-                    messageOffset: messagesOffset
-                ))
-                completedReasoningGroups = []
-                liveToolCalls = []
-                liveReasoningText = ""
-                toolCallAnchorMessageID = nil
-                reasoningAnchorMessageID = nil
+                rebuildArchivedGroups(from: session)
+                resetLiveStreamUIState()
 
                 if let modelContext {
                     do {
@@ -3295,6 +3298,14 @@ final class ChatViewModel {
     func cleanupPollingTasks() {
         stopBackgroundPolling(clearTrackedPrompts: true)
         pendingActionCoordinator.stopMonitoring(clearPrompt: true)
+        // The /btw side question rides its own EventSource outside the stream
+        // coordinator, so the onDisappear teardown (which suspends the main stream
+        // via suspendStreamForNavigation) must stop it explicitly — otherwise
+        // navigating away mid-answer leaks the connection. Unlike the main stream
+        // there is no snapshot/reconnect path for a side stream (the transcript is
+        // rebuilt from the server on reopen), so finish it outright; that also
+        // clears `activeBtwStreamID` so a later /btw isn't blocked forever.
+        finishBtwStream()
     }
 
     private func suspendActiveStreamConnection() {
@@ -3630,19 +3641,9 @@ final class ChatViewModel {
             applyLiveActivitySessionTitle(title)
         }
 
-        currentWorkspace = completedSession.workspace ?? currentWorkspace
-        currentModel = completedSession.model ?? currentModel
-        currentModelProvider = completedSession.modelProvider ?? currentModelProvider
-        currentProfile = completedSession.profile ?? currentProfile
+        applySessionIdentityFields(from: completedSession)
 
-        contextWindowSnapshot = ContextWindowSnapshot(
-            contextLength: completedSession.contextLength,
-            thresholdTokens: completedSession.thresholdTokens,
-            lastPromptTokens: completedSession.lastPromptTokens,
-            inputTokens: completedSession.inputTokens,
-            outputTokens: completedSession.outputTokens,
-            estimatedCost: completedSession.estimatedCost
-        )
+        contextWindowSnapshot = Self.contextWindowSnapshot(from: completedSession)
         if didApplyCompletedTranscript || completedSession.toolCalls != nil {
             let rebuiltToolCallGroups = ToolCallGroup.groups(
                 persistedToolCalls: completedSession.toolCalls ?? [],
@@ -4271,11 +4272,6 @@ final class ChatViewModel {
             return String(localized: "Untitled Session")
         }
         return trimmedTitle
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 
     private static func compactModelTitle(_ modelID: String) -> String {
