@@ -175,6 +175,22 @@ final class TranscriptMessageTests: XCTestCase {
 }
 
 final class ChatTranscriptDisplaySettingsTests: XCTestCase {
+    func testUserBubbleExpansionControlAppearsOnlyAfterCollapsedLineLimit() {
+        let tenLineMessage = Array(repeating: "line", count: MessageBubbleView.collapsedUserBubbleLineLimit)
+            .joined(separator: "\n")
+        let elevenLineMessage = Array(repeating: "line", count: MessageBubbleView.collapsedUserBubbleLineLimit + 1)
+            .joined(separator: "\n")
+
+        XCTAssertFalse(MessageBubbleView.userBubbleNeedsExpansionControl(tenLineMessage))
+        XCTAssertTrue(MessageBubbleView.userBubbleNeedsExpansionControl(elevenLineMessage))
+    }
+
+    func testUserBubbleExpansionControlAppearsForLongWrappedParagraphs() {
+        let longParagraph = String(repeating: "word ", count: 160)
+
+        XCTAssertTrue(MessageBubbleView.userBubbleNeedsExpansionControl(longParagraph))
+    }
+
     func testTypingIndicatorStaysHiddenBehindVisibleThinkingAndToolCards() {
         XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
             hasActiveStream: true,
@@ -382,6 +398,18 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         // is not a real attachment marker, so the content is left untouched.
         let content = "hello\n\n[Attached files: /tmp/a.png] and then more text"
         XCTAssertEqual(MessageAttachment.contentWithoutAttachedFilesMarker(in: content), content)
+    }
+
+    @MainActor
+    func testReasoningDetailsUseMarkdownRenderer() {
+        let view = ReasoningMarkdownDetailsView(
+            text: "**Inspecting** `Markdown` inside thinking details."
+        )
+
+        XCTAssertTrue(
+            String(describing: type(of: view.body)).contains("MarkdownRenderer"),
+            "Thinking details must render through MarkdownRenderer instead of plain Text so Markdown syntax is formatted."
+        )
     }
 }
 

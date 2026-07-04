@@ -21,6 +21,10 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   `chore/` or `fix/`). Issue/triage/domain conventions live in `docs/agents/`.
 - `master` is the protected release-candidate branch (the source for internal
   TestFlight builds): keep it buildable, never do feature work on it.
+- Every PR needs an explicit deploy-impact classification. For app-only/no-deploy-impact
+  changes, keep the diff to iOS app/docs/tests, verify any API shape against upstream or
+  a running server, and call out in the PR that no server/Worker/signing/App Store Connect
+  or infra deploy is required. If that scope changes, say so before pushing/releasing.
 - Pushing a branch, opening/updating a PR, or merging needs explicit human approval.
   Default all GitHub work to the fork remote (`origin`, currently `ckorhonen/hermex`).
   Never open an upstream PR, push to `upstream`, merge from/to `upstream`, or retarget a
@@ -42,6 +46,9 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 ## Tooling
 - The maintainer works in **VS Code**, not the Xcode UI — prefer terminal validation;
   ask to open Xcode only when the terminal can't answer.
+- Repo-local skills live under `skills/`. When a task matches one, read its
+  `SKILL.md` before editing. For device-family, iPad, Mac Designed-for-iPhone/iPad,
+  or wide-layout changes, use `skills/ios/hermex-ios-form-factors/SKILL.md`.
 - Use **XcodeBuildMCP** for simulator build/test/run/log; fall back to raw
   `xcodebuild`/`xcrun simctl` for release/archive or low-level diagnosis. Defaults live
   in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that

@@ -32,20 +32,14 @@ struct ReasoningBlockView: View {
                 .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
                 if isExpanded {
-                    Text(trimmedText)
-                        .font(AppFont.caption())
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                    ReasoningMarkdownDetailsView(text: trimmedText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
-            .chatTimelineAccessorySurface(
-                fallbackMaterial: .thinMaterial,
-                cornerRadius: 10
-            )
+            .chatTimelineAccessorySurface()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -111,5 +105,13 @@ struct ReasoningBlockView: View {
         }
 
         return "\(oneLine.prefix(80))..."
+    }
+}
+
+struct ReasoningMarkdownDetailsView: View {
+    let text: String
+
+    var body: some View {
+        MarkdownRenderer(content: text, isStreaming: false)
     }
 }

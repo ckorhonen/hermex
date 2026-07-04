@@ -188,11 +188,56 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         }
         let coordinator = makeCoordinator(client: client)
 
-        let thumbnail = await coordinator.transcriptMediaThumbnailData(
+        let data = await coordinator.transcriptMediaData(
             for: TranscriptMediaReference(rawReference: remoteURL.absoluteString)
         )
 
-        XCTAssertEqual(thumbnail, mediaData)
+        XCTAssertEqual(data, mediaData)
+    }
+
+    func testTranscriptAudioMediaLoadsOriginalBytes() async throws {
+        let audioData = Data([0x49, 0x44, 0x33, 0x04])
+        let audioPath = "/Users/hermes/.hermes/audio_cache/zora-output.mp3"
+        let client = makeAuthenticatedMediaClient { request in
+            XCTAssertEqual(request.url?.path, "/api/media")
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query["path"], audioPath)
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, audioData)
+        }
+        let coordinator = makeCoordinator(client: client)
+
+        let data = await coordinator.transcriptMediaData(
+            for: TranscriptMediaReference(rawReference: audioPath)
+        )
+
+        XCTAssertEqual(data, audioData)
+    }
+
+    func testTranscriptUnsupportedMediaDoesNotRequestData() async throws {
+        let client = makeAuthenticatedMediaClient { request in
+            XCTFail("Unsupported transcript media should not request data: \(request)")
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+        let coordinator = makeCoordinator(client: client)
+
+        let data = await coordinator.transcriptMediaData(
+            for: TranscriptMediaReference(rawReference: "/tmp/archive.zip")
+        )
+
+        XCTAssertNil(data)
     }
 
     private func makeCoordinator(client: APIClient) -> ChatAttachmentCoordinator {

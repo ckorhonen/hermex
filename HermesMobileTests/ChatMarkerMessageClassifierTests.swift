@@ -95,6 +95,48 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         XCTAssertEqual(body, "[Context compaction] Summary text")
     }
 
+    func testPreservedTaskListItemsParseStatusSuffixRows() {
+        let items = ChatMarkerMessageClassifier.preservedTaskListItems(in: """
+        state. Verify live Hermex git state and isolate unrelated work (in_progress)
+        review. Run autoreview/security scan on the response notification copy diff (pending)
+        done. Upload build to TestFlight (completed)
+        """)
+
+        XCTAssertEqual(items, [
+            PreservedTaskListItem(
+                id: "state",
+                title: "Verify live Hermex git state and isolate unrelated work",
+                state: .active
+            ),
+            PreservedTaskListItem(
+                id: "review",
+                title: "Run autoreview/security scan on the response notification copy diff",
+                state: .unchecked
+            ),
+            PreservedTaskListItem(
+                id: "done",
+                title: "Upload build to TestFlight",
+                state: .checked
+            )
+        ])
+    }
+
+    func testPreservedTaskListItemsParseMarkdownCheckboxRows() {
+        let items = ChatMarkerMessageClassifier.preservedTaskListItems(in: """
+        - [x] Completed task
+        - [ ] Pending task
+        """)
+
+        XCTAssertEqual(items.map(\.title), ["Completed task", "Pending task"])
+        XCTAssertEqual(items.map(\.state), [.checked, .unchecked])
+    }
+
+    func testPreservedTaskListItemsIgnorePlainLines() {
+        let items = ChatMarkerMessageClassifier.preservedTaskListItems(in: "Just a normal note")
+
+        XCTAssertTrue(items.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func makeMessage(role: String?, content: String?) -> ChatMessage {

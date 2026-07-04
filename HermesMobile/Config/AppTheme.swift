@@ -64,6 +64,7 @@ enum ZoraBrand {
     static let backgroundBottom = ember
     static let warmHighlight = paper
     static let selectionAccent = paper
+    static let sessionPinActionTint = terracotta
     static let success = Color(red: 112.0 / 255.0, green: 214.0 / 255.0, blue: 142.0 / 255.0)
     static let warning = Color(red: 255.0 / 255.0, green: 194.0 / 255.0, blue: 107.0 / 255.0)
     static let danger = Color(red: 255.0 / 255.0, green: 112.0 / 255.0, blue: 88.0 / 255.0)
@@ -73,7 +74,7 @@ enum ZoraBrand {
     static let cardFill = paper.opacity(0.11)
     static let cardFillStrong = paper.opacity(0.16)
     static let cardStroke = whisper
-    static let subtleFill = paper.opacity(0.09)
+    static let subtleFill = paper.opacity(0.06)
     static let hairline = whisper
 
     // Warm semantic surfaces for the Zora-branded app shell. These replace the
@@ -83,11 +84,11 @@ enum ZoraBrand {
     static let surfaceHairlineStrong = paper.opacity(0.30)
     static let listDivider = paper.opacity(0.16)
     static let listDividerStrong = paper.opacity(0.24)
-    static let chatBubbleFill = Color(red: 96.0 / 255.0, green: 27.0 / 255.0, blue: 12.0 / 255.0).opacity(0.82)
-    static let chatBubbleStroke = paper.opacity(0.24)
-    static let inlineCodeFill = Color(red: 86.0 / 255.0, green: 24.0 / 255.0, blue: 10.0 / 255.0).opacity(0.72)
-    static let codeBlockFill = Color(red: 75.0 / 255.0, green: 21.0 / 255.0, blue: 9.0 / 255.0).opacity(0.84)
-    static let codeBlockStroke = paper.opacity(0.22)
+    static let chatBubbleFill = Color(red: 140.0 / 255.0, green: 48.0 / 255.0, blue: 24.0 / 255.0).opacity(0.38)
+    static let chatBubbleStroke = paper.opacity(0.22)
+    static let inlineCodeFill = Color(red: 130.0 / 255.0, green: 44.0 / 255.0, blue: 22.0 / 255.0).opacity(0.32)
+    static let codeBlockFill = Color(red: 120.0 / 255.0, green: 40.0 / 255.0, blue: 20.0 / 255.0).opacity(0.35)
+    static let codeBlockStroke = paper.opacity(0.20)
     static let accessoryFill = paper.opacity(0.10)
     static let accessoryFillInset = paper.opacity(0.07)
     static let accessoryStroke = paper.opacity(0.20)
@@ -125,6 +126,93 @@ enum ZoraMotion {
     static let sheet = Animation.spring(response: 0.55, dampingFraction: 0.85)
     static let tap = Animation.spring(response: 0.3, dampingFraction: 0.7)
 }
+
+#if canImport(UIKit)
+enum AppFormFactor: Equatable {
+    case phone
+    case tablet
+    case desktop
+
+    static func current(horizontalSizeClass: UserInterfaceSizeClass?) -> AppFormFactor {
+        resolve(
+            horizontalSizeClass: horizontalSizeClass,
+            idiom: UIDevice.current.userInterfaceIdiom
+        )
+    }
+
+    static func resolve(
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        idiom: UIUserInterfaceIdiom,
+        isMacCatalyst: Bool = Self.isRunningMacCatalyst,
+        isIOSAppOnMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac
+    ) -> AppFormFactor {
+        if isMacCatalyst || isIOSAppOnMac || idiom == .mac {
+            return .desktop
+        }
+
+        if idiom == .pad || (idiom == .unspecified && horizontalSizeClass == .regular) {
+            return .tablet
+        }
+
+        return .phone
+    }
+
+    private static var isRunningMacCatalyst: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        false
+        #endif
+    }
+}
+
+enum ZoraAdaptiveContentRole {
+    case navigationList
+    case readablePage
+    case chatTranscript
+    case floatingComposer
+
+    func maxWidth(for formFactor: AppFormFactor) -> CGFloat? {
+        switch (self, formFactor) {
+        case (_, .phone):
+            return nil
+        case (.navigationList, .tablet):
+            return 560
+        case (.navigationList, .desktop):
+            return 600
+        case (.readablePage, .tablet):
+            return 760
+        case (.readablePage, .desktop):
+            return 820
+        case (.chatTranscript, .tablet):
+            return 860
+        case (.chatTranscript, .desktop):
+            return 940
+        case (.floatingComposer, .tablet):
+            return 760
+        case (.floatingComposer, .desktop):
+            return 860
+        }
+    }
+
+    func outerAlignment(for formFactor: AppFormFactor) -> Alignment {
+        formFactor == .phone ? .topLeading : .top
+    }
+}
+
+private struct ZoraAdaptiveContentFrameModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    let role: ZoraAdaptiveContentRole
+
+    func body(content: Content) -> some View {
+        let formFactor = AppFormFactor.current(horizontalSizeClass: horizontalSizeClass)
+
+        content
+            .frame(maxWidth: role.maxWidth(for: formFactor), alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: role.outerAlignment(for: formFactor))
+    }
+}
+#endif
 
 enum ZoraSurfaceLevel {
     case subtle
@@ -488,6 +576,12 @@ extension View {
     func zoraBrandedScreen() -> some View {
         modifier(ZoraBrandedScreenModifier())
     }
+
+    #if canImport(UIKit)
+    func zoraAdaptiveContentFrame(_ role: ZoraAdaptiveContentRole) -> some View {
+        modifier(ZoraAdaptiveContentFrameModifier(role: role))
+    }
+    #endif
 
     func zoraSurface(
         _ level: ZoraSurfaceLevel = .card,
@@ -888,14 +982,55 @@ enum ResponseCompletionNotificationPolicy {
 }
 
 struct ResponseCompletionNotificationRequest: Equatable {
-    static let title = String(localized: "Hermes response complete")
-    static let body = String(localized: "The assistant finished responding.")
-
     let sessionID: String?
+    let sessionTitle: String?
+    let responsePreview: String?
+
+    init(sessionID: String?, sessionTitle: String? = nil, responsePreview: String? = nil) {
+        self.sessionID = sessionID
+        self.sessionTitle = Self.normalizedCopy(sessionTitle, maxLength: 72)
+        self.responsePreview = Self.normalizedCopy(responsePreview, maxLength: 180)
+    }
+
+    var title: String {
+        guard let sessionTitle else {
+            return String(localized: "Zora has a reply ready")
+        }
+
+        return String(localized: "Zora finished: \(sessionTitle)")
+    }
+
+    var body: String {
+        guard let responsePreview else {
+            return String(localized: "Open the session to review the response and decide the next step.")
+        }
+
+        return String(localized: "Latest reply: \(responsePreview)")
+    }
 
     var userInfo: [String: String] {
         guard let sessionID, !sessionID.isEmpty else { return [:] }
         return ["session_id": sessionID]
+    }
+
+    private static func normalizedCopy(_ value: String?, maxLength: Int) -> String? {
+        guard var text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+
+        text = text.replacingOccurrences(
+            of: #"\[([^\]]+)\]\([^)]+\)"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        text = text.replacingOccurrences(of: #"[`*_>#]+"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        guard text.count > maxLength else { return text }
+
+        let endIndex = text.index(text.startIndex, offsetBy: max(0, maxLength - 1))
+        return String(text[..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
     }
 }
 
@@ -951,8 +1086,8 @@ struct UserNotificationResponseCompletionScheduler: ResponseCompletionNotificati
 
     func schedule(_ request: ResponseCompletionNotificationRequest) async {
         let content = UNMutableNotificationContent()
-        content.title = ResponseCompletionNotificationRequest.title
-        content.body = ResponseCompletionNotificationRequest.body
+        content.title = request.title
+        content.body = request.body
         content.sound = .default
         content.userInfo = request.userInfo
 
@@ -992,6 +1127,8 @@ enum ResponseCompletionNotificationService {
     @discardableResult
     static func scheduleResponseCompletedIfAllowed(
         sessionID: String?,
+        sessionTitle: String? = nil,
+        responsePreview: String? = nil,
         preferenceEnabled: Bool,
         completedNormally: Bool,
         sceneIsActive: Bool,
@@ -1007,7 +1144,11 @@ enum ResponseCompletionNotificationService {
             return false
         }
 
-        await scheduler.schedule(ResponseCompletionNotificationRequest(sessionID: sessionID))
+        await scheduler.schedule(ResponseCompletionNotificationRequest(
+            sessionID: sessionID,
+            sessionTitle: sessionTitle,
+            responsePreview: responsePreview
+        ))
         return true
     }
 }

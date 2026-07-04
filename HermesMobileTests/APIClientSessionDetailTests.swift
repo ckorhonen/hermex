@@ -1304,6 +1304,50 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertEqual(display.detailText, "Failed")
     }
 
+    func testToolCallDisplayNameHumanizesSkillViewTitle() {
+        let toolCall = ToolCall(
+            name: "skill_view",
+            preview: nil,
+            args: ["name": .string("kung-fu")],
+            isCompleted: true
+        )
+
+        XCTAssertEqual(toolCall.displayName, "Load skill: Kung Fu")
+    }
+
+    func testToolCallDisplayNameHumanizesNamespacedSkillViewTitle() {
+        let toolCall = ToolCall(
+            name: "functions.skill_view",
+            preview: nil,
+            args: ["name": .string("chris-app-design-system")],
+            isCompleted: true
+        )
+
+        XCTAssertEqual(toolCall.displayName, "Load skill: Chris App Design System")
+    }
+
+    func testToolCallDisplayNamePreservesKnownSkillAcronyms() {
+        let toolCall = ToolCall(
+            name: "skill_view",
+            preview: nil,
+            args: ["name": .string("zora-tts-hermes-provider")],
+            isCompleted: true
+        )
+
+        XCTAssertEqual(toolCall.displayName, "Load skill: Zora TTS Hermes Provider")
+    }
+
+    func testToolCallDisplayNameFallsBackToRawToolNameWhenSkillNameIsMissing() {
+        let toolCall = ToolCall(
+            name: "skill_view",
+            preview: nil,
+            args: nil,
+            isCompleted: true
+        )
+
+        XCTAssertEqual(toolCall.displayName, "skill_view")
+    }
+
     func testToolCallDisplayFormatterParsesTerminalJSONOutput() {
         let display = ToolCallDisplayFormatter.resultDisplay(
             preview: #"{"output":"line one\nline two\n","exit_code":0,"error":null}"#,

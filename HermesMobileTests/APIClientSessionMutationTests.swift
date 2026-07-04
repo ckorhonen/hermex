@@ -7,6 +7,40 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientSessionMutationTests: APIClientTestCase {
+    func testCreateSessionBuildsExpectedBodyAndDecodesResponse() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/session/new")
+
+            let body = try XCTUnwrap(apiTestBodyData(from: request))
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+            XCTAssertEqual(json?["workspace"] as? String, "/tmp/wiki")
+            XCTAssertEqual(json?["model"] as? String, "spark-qwen")
+            XCTAssertEqual(json?["model_provider"] as? String, "spark")
+            XCTAssertEqual(json?["profile"] as? String, "dev")
+            XCTAssertNil(json?["modelProvider"])
+
+            return apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "new-123",
+                "title": "Untitled Session",
+                "workspace": "/tmp/wiki"
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.createSession(
+            workspace: "/tmp/wiki",
+            model: "spark-qwen",
+            modelProvider: "spark",
+            profile: "dev"
+        )
+
+        XCTAssertEqual(response.session?.sessionId, "new-123")
+        XCTAssertEqual(response.session?.workspace, "/tmp/wiki")
+    }
+
     func testPostRequestsEncodeSnakeCaseBody() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/pin")

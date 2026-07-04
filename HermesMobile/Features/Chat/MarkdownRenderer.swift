@@ -372,6 +372,7 @@ private struct ChatMarkdownView: View {
             .markdownTextStyle(\.code) {
                 FontFamilyVariant(.monospaced)
                 FontSize(.em(0.88))
+                ForegroundColor(ZoraBrand.foreground)
                 BackgroundColor(ZoraBrand.inlineCodeFill)
             }
             .markdownCodeSyntaxHighlighter(.plainText)
@@ -379,7 +380,23 @@ private struct ChatMarkdownView: View {
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
                     .relativeLineSpacing(.em(0.18))
-                    .markdownMargin(top: 0, bottom: 8)
+                    .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownBlock)
+            }
+            .markdownBlockStyle(\.blockquote) { configuration in
+                HStack(spacing: 12) {
+                    Rectangle()
+                        .fill(ZoraBrand.coral.opacity(0.55))
+                        .frame(width: 3)
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                    configuration.label
+                        .relativeLineSpacing(.em(0.16))
+                        .markdownTextStyle {
+                            ForegroundColor(ZoraBrand.secondaryForeground)
+                            FontStyle(.italic)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .markdownMargin(top: ChatTranscriptSpacing.turnBlock, bottom: ChatTranscriptSpacing.markdownBlock)
             }
     }
 }
@@ -442,6 +459,8 @@ private struct ChatCodeBlock: View {
                 Button {
                     UIPasteboard.general.string = content
                     didCopy = true
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "square.on.square")
                         .font(.system(size: 18, weight: .semibold))
@@ -463,6 +482,15 @@ private struct ChatCodeBlock: View {
             } else {
                 ScrollView(.horizontal) {
                     styledCodeText(fixedHorizontal: true)
+                }
+                .overlay(alignment: .trailing) {
+                    LinearGradient(
+                        colors: [codeBlockBackground.opacity(0), codeBlockBackground],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 44)
+                    .allowsHitTesting(false)
                 }
             }
         }
@@ -1188,9 +1216,14 @@ private extension MarkdownUI.Theme {
                 BackgroundColor(nil)
                 FontSize(16)
             }
+            .link {
+                ForegroundColor(ZoraBrand.paper.opacity(0.85))
+                UnderlineStyle(.single)
+            }
             .code {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.85))
+                FontSize(.em(0.88))
+                ForegroundColor(ZoraBrand.foreground)
                 BackgroundColor(ZoraBrand.inlineCodeFill)
             }
             .codeBlock { configuration in
@@ -1199,14 +1232,14 @@ private extension MarkdownUI.Theme {
                     content: configuration.content,
                     isStreaming: isStreaming
                 )
-                .markdownMargin(top: 4, bottom: 12)
+                .markdownMargin(top: ChatTranscriptSpacing.turnBlock, bottom: ChatTranscriptSpacing.markdownRichBlock)
             }
             .table { configuration in
                 ChatMarkdownTable(
                     label: configuration.label,
                     colorScheme: colorScheme
                 )
-                .markdownMargin(top: 0, bottom: 16)
+                .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownRichBlock)
             }
             .tableCell { configuration in
                 TableCellWidthCap(
@@ -1225,6 +1258,7 @@ private extension MarkdownUI.Theme {
                 .padding(.vertical, 6)
                 .padding(.horizontal, 13)
                 .relativeLineSpacing(.em(0.25))
+                .background(configuration.row == 0 ? ZoraBrand.cardFillStrong : Color.clear)
             }
     }
 }
@@ -1236,34 +1270,23 @@ private struct ChatMarkdownTable: View {
     let label: MarkdownUI.BlockConfiguration.Label
     let colorScheme: ColorScheme
 
+    private let cornerRadius: CGFloat = 18
+
     var body: some View {
         ScrollView(.horizontal) {
             label
                 .fixedSize(horizontal: true, vertical: true)
-                .markdownTableBorderStyle(.init(color: borderColor))
+                .markdownTableBorderStyle(.init(color: ZoraBrand.surfaceHairline))
                 .markdownTableBackgroundStyle(
-                    .alternatingRows(backgroundColor, secondaryBackgroundColor)
+                    .alternatingRows(ZoraBrand.codeBlockFill, ZoraBrand.subtleFill)
                 )
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-    }
-
-    private var backgroundColor: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.094, green: 0.098, blue: 0.114)
-            : SwiftUI.Color.white
-    }
-
-    private var secondaryBackgroundColor: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.145, green: 0.149, blue: 0.165)
-            : SwiftUI.Color(red: 0.969, green: 0.969, blue: 0.976)
-    }
-
-    private var borderColor: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.259, green: 0.267, blue: 0.306)
-            : SwiftUI.Color(red: 0.894, green: 0.894, blue: 0.91)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(ZoraBrand.codeBlockStroke, lineWidth: 0.5)
+        )
     }
 }
 

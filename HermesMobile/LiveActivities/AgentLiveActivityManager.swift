@@ -26,7 +26,15 @@ enum AgentLiveActivityEvent: Equatable {
 struct OrphanedLiveActivity: Equatable {
     let streamID: String
     let sessionID: String
+    let sessionTitle: String?
     let updatedAt: Date
+
+    init(streamID: String, sessionID: String, sessionTitle: String? = nil, updatedAt: Date) {
+        self.streamID = streamID
+        self.sessionID = sessionID
+        self.sessionTitle = sessionTitle
+        self.updatedAt = updatedAt
+    }
 }
 
 @MainActor
@@ -257,6 +265,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             return OrphanedLiveActivity(
                 streamID: streamID,
                 sessionID: state.sessionID,
+                sessionTitle: state.sessionTitle,
                 updatedAt: state.updatedAt
             )
         }
@@ -609,6 +618,7 @@ enum LiveActivityReconciler {
                 // failed run is finalized silently and no longer mis-notifies.
                 await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
                     sessionID: orphan.sessionID.isEmpty ? nil : orphan.sessionID,
+                    sessionTitle: orphan.sessionTitle,
                     preferenceEnabled: preferenceEnabled,
                     completedNormally: true,
                     sceneIsActive: false

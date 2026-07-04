@@ -1,9 +1,18 @@
 import SwiftUI
 import UIKit
 
+enum ChatTranscriptSpacing {
+    static let message: CGFloat = 8
+    static let turnBlock: CGFloat = 5
+    static let markdownBlock: CGFloat = 6
+    static let markdownRichBlock: CGFloat = 10
+    static let contentTopInset: CGFloat = 14
+}
+
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let isLoading: Bool
     let errorMessage: String?
@@ -46,7 +55,7 @@ struct ChatTranscriptView: View {
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
-    let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
     let onLoadMessages: () async -> Void
@@ -232,7 +241,7 @@ struct ChatTranscriptView: View {
                     isForkingMessage: isForkingMessage,
                     loadAttachmentImage: loadAttachmentImage,
                     loadAttachmentData: loadAttachmentData,
-                    loadTranscriptMediaImage: loadTranscriptMediaImage,
+                    loadTranscriptMediaData: loadTranscriptMediaData,
                     actionContext: actionContext,
                     shouldRenderMessageRow: shouldRenderMessageRow,
                     onPreviewAttachment: onPreviewAttachment,
@@ -265,10 +274,10 @@ struct ChatTranscriptView: View {
                 .id(bottomAnchorID)
                 .allowsHitTesting(false)
         }
-        .padding(.top, 16)
+        .padding(.top, ChatTranscriptSpacing.contentTopInset)
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
-        .frame(width: viewportWidth, alignment: .leading)
+        .frame(width: viewportWidth, alignment: transcriptFrameAlignment)
         .clipped()
         .background {
             ZStack {
@@ -290,8 +299,21 @@ struct ChatTranscriptView: View {
         dynamicTypeSize.isAccessibilitySize ? 20 : 16
     }
 
+    private var formFactor: AppFormFactor {
+        AppFormFactor.current(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private var transcriptFrameAlignment: Alignment {
+        formFactor == .phone ? .leading : .center
+    }
+
     private func transcriptContentWidth(for viewportWidth: CGFloat) -> CGFloat {
-        max(0, viewportWidth - (transcriptHorizontalPadding * 2))
+        let availableWidth = max(0, viewportWidth - (transcriptHorizontalPadding * 2))
+        guard let maxWidth = ZoraAdaptiveContentRole.chatTranscript.maxWidth(for: formFactor) else {
+            return availableWidth
+        }
+
+        return min(availableWidth, maxWidth)
     }
 
     @ViewBuilder
@@ -451,7 +473,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
-    let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
@@ -515,7 +537,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     isForkingMessage: isForkingMessage,
                     loadAttachmentImage: loadAttachmentImage,
                     loadAttachmentData: loadAttachmentData,
-                    loadTranscriptMediaImage: loadTranscriptMediaImage,
+                    loadTranscriptMediaData: loadTranscriptMediaData,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
                     onToggleListening: onToggleListening,
@@ -595,7 +617,7 @@ private struct ChatTranscriptMessageRow: View {
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
-    let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onToggleListening: (MessageActionContext) -> Void
@@ -640,7 +662,7 @@ private struct ChatTranscriptMessageRow: View {
             message: message,
             loadAttachmentImage: loadAttachmentImage,
             loadAttachmentData: loadAttachmentData,
-            loadTranscriptMediaImage: loadTranscriptMediaImage,
+            loadTranscriptMediaData: loadTranscriptMediaData,
             localAttachmentPreviews: localAttachmentPreviews,
             onPreviewAttachment: onPreviewAttachment,
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,

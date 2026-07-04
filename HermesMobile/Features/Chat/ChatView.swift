@@ -41,8 +41,8 @@ private enum TurnDiffPresentation: Identifiable {
 
 struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
-    private let transcriptMessageSpacing: CGFloat = 10
-    private let transcriptBlockSpacing: CGFloat = 6
+    private let transcriptMessageSpacing = ChatTranscriptSpacing.message
+    private let transcriptBlockSpacing = ChatTranscriptSpacing.turnBlock
     private let composerAccessoryVerticalSpacing: CGFloat = 8
     private let activeRunStatusSpacerHeight: CGFloat = 36
     private let approvalBypassStatusSpacerHeight: CGFloat = 38
@@ -264,6 +264,7 @@ struct ChatView: View {
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.
         .environment(\.layoutDirection, chatLayoutDirection)
+        .zoraAdaptiveContentFrame(.floatingComposer)
     }
 
     var body: some View {
@@ -285,6 +286,7 @@ struct ChatView: View {
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
             composerAccessoryStack
+                .zoraAdaptiveContentFrame(.floatingComposer)
 
             messageComposer
 
@@ -860,8 +862,8 @@ struct ChatView: View {
             loadAttachmentData: { path in
                 await viewModel.attachmentRawData(path: path)
             },
-            loadTranscriptMediaImage: { reference in
-                await viewModel.transcriptMediaThumbnailData(for: reference)
+            loadTranscriptMediaData: { reference in
+                await viewModel.transcriptMediaData(for: reference)
             },
             actionContext: { message, visibleIndex in
                 viewModel.actionContext(for: message, visibleIndex: visibleIndex)
@@ -1615,11 +1617,19 @@ struct ChatView: View {
 
             await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
                 sessionID: session.sessionId,
+                sessionTitle: displayTitle,
+                responsePreview: showsLiveActivityResponseExcerpts ? responseCompletionNotificationPreview : nil,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
                 completedNormally: true,
                 sceneIsActive: completionContext.sceneIsActive
             )
         }
+    }
+
+    private var responseCompletionNotificationPreview: String? {
+        viewModel.messages.reversed().first { message in
+            message.role == "assistant" && message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }?.content
     }
 
     private func beginResponseCompletionBackgroundTask() {

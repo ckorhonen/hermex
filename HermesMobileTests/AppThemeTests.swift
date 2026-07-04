@@ -59,6 +59,13 @@ final class AppThemeTests: XCTestCase {
         XCTAssertEqual(ZoraBrand.accessibilityLabel, "Zora")
     }
 
+    func testZoraBrandSessionPinActionTintUsesWarmPalette() {
+        XCTAssertEqual(
+            UIColor(ZoraBrand.sessionPinActionTint),
+            UIColor(ZoraBrand.terracotta)
+        )
+    }
+
     func testZoraSpacingMatchesDocumentedTokenScale() {
         XCTAssertEqual(ZoraSpacing.xs, 8)
         XCTAssertEqual(ZoraSpacing.sm, 12)
@@ -72,6 +79,46 @@ final class AppThemeTests: XCTestCase {
             UIColor(ZoraBrand.background(for: .light)),
             UIColor(ZoraBrand.background(for: .dark))
         )
+    }
+
+    func testAppFormFactorResolvesFromIdiomAndSizeClass() {
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .compact, idiom: .phone, isMacCatalyst: false),
+            .phone
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .regular, idiom: .phone, isMacCatalyst: false),
+            .phone
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .regular, idiom: .unspecified, isMacCatalyst: false),
+            .tablet
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .compact, idiom: .pad, isMacCatalyst: false),
+            .tablet
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .compact, idiom: .phone, isMacCatalyst: true),
+            .desktop
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(
+                horizontalSizeClass: .regular,
+                idiom: .pad,
+                isMacCatalyst: false,
+                isIOSAppOnMac: true
+            ),
+            .desktop
+        )
+    }
+
+    func testAdaptiveContentRolesKeepPhoneFluidAndCapWideLayouts() {
+        XCTAssertNil(ZoraAdaptiveContentRole.chatTranscript.maxWidth(for: .phone))
+        XCTAssertEqual(ZoraAdaptiveContentRole.navigationList.maxWidth(for: .tablet), 560)
+        XCTAssertEqual(ZoraAdaptiveContentRole.readablePage.maxWidth(for: .desktop), 820)
+        XCTAssertEqual(ZoraAdaptiveContentRole.floatingComposer.maxWidth(for: .desktop), 860)
+        XCTAssertEqual(ZoraAdaptiveContentRole.chatTranscript.outerAlignment(for: .tablet), .top)
     }
 
     func testSessionIdentityInitialsPreferStoredValueThenDisplayName() {
@@ -291,11 +338,35 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         XCTAssertEqual(ResponseCompletionNotificationRequest(sessionID: nil).userInfo, [:])
     }
 
+    func testRequestCopyUsesSessionTitleAndReplyPreview() {
+        let request = ResponseCompletionNotificationRequest(
+            sessionID: "session-abc",
+            sessionTitle: "  Morning briefing follow-ups  ",
+            responsePreview: "  **Calendar is clear.**\n\nTwo inbox items need approval.  "
+        )
+
+        XCTAssertEqual(request.title, "Zora finished: Morning briefing follow-ups")
+        XCTAssertEqual(request.body, "Latest reply: Calendar is clear. Two inbox items need approval.")
+    }
+
+    func testRequestCopyFallsBackWhenContextIsMissing() {
+        let request = ResponseCompletionNotificationRequest(
+            sessionID: nil,
+            sessionTitle: "  ",
+            responsePreview: "\n\t"
+        )
+
+        XCTAssertEqual(request.title, "Zora has a reply ready")
+        XCTAssertEqual(request.body, "Open the session to review the response and decide the next step.")
+    }
+
     func testSchedulesAllowedResponseCompletionWithSessionID() async {
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)
 
         let didSchedule = await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
             sessionID: "session-abc",
+            sessionTitle: "Release copy review",
+            responsePreview: "Updated the notification copy and build checks passed.",
             preferenceEnabled: true,
             completedNormally: true,
             sceneIsActive: false,
@@ -304,7 +375,13 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
 
         XCTAssertTrue(didSchedule)
         XCTAssertEqual(scheduler.authorizationStatusCallCount, 1)
-        XCTAssertEqual(scheduler.scheduledRequests, [ResponseCompletionNotificationRequest(sessionID: "session-abc")])
+        XCTAssertEqual(scheduler.scheduledRequests, [
+            ResponseCompletionNotificationRequest(
+                sessionID: "session-abc",
+                sessionTitle: "Release copy review",
+                responsePreview: "Updated the notification copy and build checks passed."
+            )
+        ])
     }
 
     func testDoesNotScheduleBlockedResponseCompletion() async {

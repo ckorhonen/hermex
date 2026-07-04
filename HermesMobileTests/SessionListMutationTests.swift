@@ -247,6 +247,55 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateSessionCarriesRequestedModelProviderAndProfile() async throws {
+        var requestedPaths: [String] = []
+        let viewModel = try makeViewModel { request in
+            let path = request.url?.path
+            requestedPaths.append(path ?? "nil")
+
+            switch path {
+            case "/api/workspaces":
+                return apiTestJSONResponse("""
+                {
+                  "workspaces": [
+                    {"path": "/tmp/workspace", "name": "Workspace"}
+                  ],
+                  "last": "/tmp/workspace"
+                }
+                """, for: request)
+            case "/api/session/new":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["workspace"] as? String, "/tmp/workspace")
+                XCTAssertEqual(body["model"] as? String, "spark-qwen")
+                XCTAssertEqual(body["model_provider"] as? String, "spark")
+                XCTAssertEqual(body["profile"] as? String, "dev")
+
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "new-123",
+                    "title": "Untitled Session",
+                    "workspace": "/tmp/workspace",
+                    "model": "spark-qwen",
+                    "model_provider": "spark"
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let created = await viewModel.createSession(profile: "dev", model: "spark-qwen", modelProvider: "spark")
+
+        XCTAssertEqual(created?.sessionId, "new-123")
+        XCTAssertEqual(requestedPaths, ["/api/workspaces", "/api/session/new"])
+        XCTAssertNil(viewModel.actionErrorMessage)
+        XCTAssertNil(viewModel.lastError)
+    }
+
+    @MainActor
     func testLoadActiveProfileUsesProfilesEndpointAndStoresCurrentProfile() async throws {
         var requestedPaths: [String] = []
         let viewModel = try makeViewModel { request in

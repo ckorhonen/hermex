@@ -75,9 +75,7 @@ struct SessionListView: View {
                 content
 
                 if !isSearchingSessions {
-                    newSessionButton
-                        .padding(.trailing, ZoraSpacing.screenInset)
-                        .padding(.bottom, ZoraSpacing.section - 2)
+                    newSessionButtonOverlay
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -90,6 +88,8 @@ struct SessionListView: View {
                     initialAttachments: route.initialAttachments,
                     autoStartsVoiceInput: route.autoStartsVoiceInput,
                     profileName: route.profileName,
+                    modelName: route.modelName,
+                    modelProviderName: route.modelProviderName,
                     server: server,
                     viewModel: viewModel,
                     onAPIError: authManager.handleAPIError
@@ -98,15 +98,14 @@ struct SessionListView: View {
             .navigationDestination(item: $selectedUtilityDestination) { destination in
                 switch destination {
                 case .settings(let scrollTo):
-                    SettingsView(authManager: authManager, server: server, initialScrollTarget: scrollTo)
+                    SettingsView(
+                        authManager: authManager,
+                        server: server,
+                        initialScrollTarget: scrollTo,
+                        onAPIError: authManager.handleAPIError
+                    )
                 case .tasks:
                     TasksView(server: server, onAPIError: authManager.handleAPIError)
-                case .skills:
-                    SkillsView(server: server, onAPIError: authManager.handleAPIError)
-                case .memory:
-                    MemoryView(server: server, onAPIError: authManager.handleAPIError)
-                case .insights:
-                    InsightsView(server: server, onAPIError: authManager.handleAPIError)
                 }
             }
             .sheet(item: $sessionPendingRename) { session in
@@ -302,6 +301,7 @@ struct SessionListView: View {
         // so insert/remove animates. Value-based so it works with @AppStorage.
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: profilesAreExpanded)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
+        .zoraAdaptiveContentFrame(.navigationList)
     }
 
     private var header: some View {
@@ -488,6 +488,16 @@ struct SessionListView: View {
         .disabled(viewModel.isViewingCachedData || pendingNewChat != nil)
         .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
         .accessibilityLabel("New Session")
+    }
+
+    private var newSessionButtonOverlay: some View {
+        HStack {
+            Spacer(minLength: 0)
+            newSessionButton
+        }
+        .padding(.trailing, ZoraSpacing.screenInset)
+        .padding(.bottom, ZoraSpacing.section - 2)
+        .zoraAdaptiveContentFrame(.navigationList)
     }
 
     private var visibleSessions: [SessionSummary] {
@@ -884,29 +894,47 @@ struct SessionListView: View {
         guard let request = requestedNewChat else { return }
         requestedNewChat = nil
         pendingNewChat = PendingNewChatRoute(
+            initialDraft: request.initialDraft,
             autoStartsVoiceInput: request.autoStartsVoiceInput,
-            profileName: request.profileName
+            profileName: request.profileName,
+            modelName: request.modelName,
+            modelProviderName: request.modelProviderName
         )
     }
 
 }
 
-/// A request from `ContentView` to open the New Chat composer. Carries whether voice
-/// dictation should auto-start (the "New Chat with Voice" App Intent, #338) and an optional
+/// A request from `ContentView` to open the New Chat composer. Carries an optional initial
+/// draft/model/provider/profile from deep links (Wiki App launch buttons), whether voice
+/// dictation should auto-start (the "New Chat with Voice" App Intent, #338), and an optional
 /// profile name to pin the new session to (the "New Chat in <Profile>" App Intent, #339).
 /// A fresh `id` each time so a repeat invocation re-triggers navigation even if the previous
 /// value lingers.
 struct NewChatRequest: Equatable {
     let id: UUID
+    let initialDraft: String
     let autoStartsVoiceInput: Bool
     /// When set, the new session is created pinned to this profile; nil uses the server's
     /// active profile (the plain "+" / "New Chat" behavior).
     let profileName: String?
+    /// When set, the new session is created with this model preselected.
+    let modelName: String?
+    /// Optional provider to disambiguate `modelName` when multiple providers expose it.
+    let modelProviderName: String?
 
-    init(autoStartsVoiceInput: Bool = false, profileName: String? = nil) {
+    init(
+        initialDraft: String = "",
+        autoStartsVoiceInput: Bool = false,
+        profileName: String? = nil,
+        modelName: String? = nil,
+        modelProviderName: String? = nil
+    ) {
         self.id = UUID()
+        self.initialDraft = initialDraft
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
+        self.modelName = modelName
+        self.modelProviderName = modelProviderName
     }
 }
 
@@ -918,17 +946,25 @@ private struct PendingNewChatRoute: Identifiable, Hashable {
     let autoStartsVoiceInput: Bool
     /// When set, the new session is created pinned to this profile (#339).
     let profileName: String?
+    /// When set, the new session is created with this model preselected.
+    let modelName: String?
+    /// Optional provider to disambiguate `modelName`.
+    let modelProviderName: String?
 
     init(
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         autoStartsVoiceInput: Bool = false,
-        profileName: String? = nil
+        profileName: String? = nil,
+        modelName: String? = nil,
+        modelProviderName: String? = nil
     ) {
         self.initialDraft = initialDraft
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
+        self.modelName = modelName
+        self.modelProviderName = modelProviderName
     }
 
     static func == (lhs: PendingNewChatRoute, rhs: PendingNewChatRoute) -> Bool {
@@ -945,9 +981,6 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     /// passes `.servers`, a plain avatar tap passes `nil` (#283).
     case settings(SettingsScrollAnchor?)
     case tasks
-    case skills
-    case memory
-    case insights
 
     var id: Self { self }
 }
@@ -973,6 +1006,8 @@ private struct PendingNewChatView: View {
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
     let profileName: String?
+    let modelName: String?
+    let modelProviderName: String?
 
     @State private var createdSession: SessionSummary?
     @State private var draftMessage = ""
@@ -985,6 +1020,8 @@ private struct PendingNewChatView: View {
         initialAttachments: [SharedAttachmentImport] = [],
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
+        modelName: String? = nil,
+        modelProviderName: String? = nil,
         server: URL,
         viewModel: SessionListViewModel,
         onAPIError: @escaping (Error) -> Void
@@ -995,6 +1032,8 @@ private struct PendingNewChatView: View {
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
+        self.modelName = modelName
+        self.modelProviderName = modelProviderName
         _draftMessage = State(initialValue: initialDraft)
     }
 
@@ -1042,6 +1081,7 @@ private struct PendingNewChatView: View {
 
                 pendingComposer
             }
+            .zoraAdaptiveContentFrame(.floatingComposer)
             .padding(.horizontal)
             .padding(.bottom, 12)
         }
@@ -1054,7 +1094,7 @@ private struct PendingNewChatView: View {
 
     private var pendingComposer: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField("Message Hermex", text: $draftMessage, axis: .vertical)
+            TextField("Message Zora", text: $draftMessage, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
                 .focused($composerIsFocused)
@@ -1108,7 +1148,12 @@ private struct PendingNewChatView: View {
 
         didStartCreation = true
         creationErrorMessage = nil
-        let session = await viewModel.createSession(modelContext: modelContext, profile: profileName)
+        let session = await viewModel.createSession(
+            modelContext: modelContext,
+            profile: profileName,
+            model: modelName,
+            modelProvider: modelProviderName
+        )
         guard !Task.isCancelled else { return }
         if let lastError = viewModel.lastError {
             onAPIError(lastError)

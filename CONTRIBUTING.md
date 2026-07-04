@@ -94,12 +94,19 @@ bug here, reproduce it in the hermes-webui **web UI** against the same server:
    - **Never invent API endpoints or JSON shapes** — verify against the pinned
      upstream `hermes-webui` source or your own running server.
    - **No new third-party dependencies** without approval.
-4. **Run the full test suite** (command above) and make sure it passes.
-5. **Open a PR** against `master` using the PR template — link the issue with
-   `Fixes #<number>`, describe what changed and how you tested it. CI must be
-   green; automated review bots may comment, and the maintainer reviews and
-   merges.
-6. **Disclose AI usage** in one line of the PR description: the tool/model
+4. **Classify deploy impact before review.** For every PR, state whether it is
+   app-only/no-deploy-impact or whether it needs server, Worker, signing,
+   App Store Connect, or infrastructure changes. If a change is intended to be
+   no-deploy-impact, keep it within the iOS app/docs/tests, verify any touched
+   API shape against upstream or a running server, and avoid editing deploy
+   workflows, backend routes, secrets, entitlements, bundle IDs, or provisioning
+   unless the PR explicitly calls that out.
+5. **Run the full test suite** (command above) and make sure it passes.
+6. **Open a PR** against `master` using the PR template — link the issue with
+   `Fixes #<number>`, describe what changed, how you tested it, and the deploy
+   impact classification. CI must be green; automated review bots may comment,
+   and the maintainer reviews and merges.
+7. **Disclose AI usage** in one line of the PR description: the tool/model
    used (e.g. "built with Claude Code"), or "human-authored". This repo is
    itself built with coding agents, so it's normal context for review — not a
    gate.
