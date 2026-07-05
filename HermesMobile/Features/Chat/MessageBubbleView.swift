@@ -112,12 +112,11 @@ struct MessageBubbleView: View {
         // frame. Animating every token's Markdown layout makes a new paragraph
         // interpolate from zero gap, so the first glyphs look glued to the
         // previous paragraph until SwiftUI settles the layout. Keep scroll
-        // following animated at the transcript level, but make the active text
-        // row's own layout transaction immediate.
+        // following and glyph fade animated, but make the active text row's
+        // own implicit layout animation immediate.
         .transaction { transaction in
             guard isStreaming else { return }
             transaction.animation = nil
-            transaction.disablesAnimations = true
         }
     }
 

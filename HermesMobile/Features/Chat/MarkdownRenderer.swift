@@ -1331,10 +1331,16 @@ private struct PlainMarkdownFallbackView: View {
 
     private let logger = Logger.hermesMarkdownRendering
 
+    private var effectiveBodyPointSize: CGFloat {
+        // `scaledBodyPointSize` is a Dynamic Type-aware `@ScaledMetric`; the
+        // chat slider then applies only its local transcript-size multiplier.
+        scaledBodyPointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
+    }
+
     var body: some View {
         Text(verbatim: content)
             .font(.system(
-                size: scaledBodyPointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)),
+                size: effectiveBodyPointSize,
                 design: .serif
             ).italic())
             .foregroundStyle(.primary)
