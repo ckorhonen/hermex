@@ -136,6 +136,67 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
+    func testLoadLocalVideoUsesMediaEndpointAndWritesTemporaryFile() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let videoData = Data("fake-video-bytes".utf8)
+        let mediaPath = "/tmp/demo-run.mp4"
+        let client = makeClient { request in
+            recorder.record(request)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/media")
+            return self.response(statusCode: 200, data: videoData, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            reference: .init(rawReference: mediaPath),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.previewData)
+        XCTAssertNil(viewModel.textContent)
+        XCTAssertEqual(viewModel.originalByteCount, videoData.count)
+        XCTAssertFalse(viewModel.canSaveImageToPhotos)
+
+        let videoFileURL = try XCTUnwrap(viewModel.videoFileURL)
+        XCTAssertEqual(videoFileURL.pathExtension, "mp4")
+        XCTAssertTrue(
+            videoFileURL.path.hasPrefix(FileManager.default.temporaryDirectory.path),
+            "video file should live in the temporary directory"
+        )
+        XCTAssertEqual(try Data(contentsOf: videoFileURL), videoData)
+
+        let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
+        XCTAssertEqual(queryItems["path"], mediaPath)
+        XCTAssertEqual(recorder.requestCount, 1)
+    }
+
+    func testReloadRemovesPreviousTemporaryVideoFile() async throws {
+        let client = makeClient { request in
+            self.response(statusCode: 200, data: Data("fake-video-bytes".utf8), for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            reference: .init(rawReference: "/tmp/demo-run.mov"),
+            apiClient: client
+        )
+
+        await viewModel.load()
+        let firstURL = try XCTUnwrap(viewModel.videoFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: firstURL.path))
+
+        await viewModel.load(force: true)
+        let secondURL = try XCTUnwrap(viewModel.videoFileURL)
+
+        XCTAssertNotEqual(firstURL, secondURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondURL.path))
+    }
+
     func testUnsupportedMediaSetsUnavailableStateWithoutRequest() async {
         let recorder = TranscriptMediaPreviewRequestRecorder()
         let client = makeClient { request in
