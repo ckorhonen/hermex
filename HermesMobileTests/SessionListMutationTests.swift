@@ -1068,6 +1068,230 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testApplySessionActivityUpdatePatchesLocalRowAndCacheWithoutNetworkRequest() async throws {
+        var requestedPaths: [String] = []
+        let context = try makeContext()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load(modelContext: context)
+        let didApply = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: " session-abc ",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: 7,
+                lastMessageAt: 1_700_000_000
+            ),
+            modelContext: context
+        )
+        let didReapply = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: 7,
+                lastMessageAt: 1_700_000_000
+            ),
+            modelContext: context
+        )
+        let cachedSessions = try CacheStore.cachedSessions(serverURL: server, in: context)
+        let row = try XCTUnwrap(viewModel.sessions.first)
+
+        XCTAssertTrue(didApply)
+        XCTAssertFalse(didReapply)
+        XCTAssertEqual(requestedPaths, ["/api/sessions"])
+        XCTAssertEqual(row.activeStreamId, "stream-1")
+        XCTAssertEqual(row.isStreaming, true)
+        XCTAssertEqual(row.messageCount, 7)
+        XCTAssertEqual(row.lastMessageAt, 1_700_000_000)
+        XCTAssertEqual(row.title, "Planning")
+        XCTAssertEqual(cachedSessions.first?.activeStreamId, "stream-1")
+        XCTAssertEqual(cachedSessions.first?.messageCount, 7)
+    }
+
+    @MainActor
+    func testApplySessionActivityUpdateMakesRowEligibleForActiveRowMonitor() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load()
+        let idleRow = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertFalse(SessionRowView.isActiveStreaming(idleRow))
+        XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), [])
+
+        // Seed known metadata so the keep-if-nil fallback below is observable.
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: nil,
+                isStreaming: false,
+                messageCount: 7,
+                lastMessageAt: 1_700_000_000
+            )
+        )
+
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: nil,
+                lastMessageAt: nil
+            )
+        )
+        let streamingRow = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertTrue(SessionRowView.isActiveStreaming(streamingRow))
+        XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), ["stream-1"])
+        // messageCount/lastMessageAt were unknown in the second update, so the
+        // row keeps the previously seeded values (keep-if-nil semantics).
+        XCTAssertEqual(streamingRow.messageCount, 7)
+        XCTAssertEqual(streamingRow.lastMessageAt, 1_700_000_000)
+
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: nil,
+                isStreaming: false,
+                messageCount: nil,
+                lastMessageAt: nil
+            )
+        )
+        let finishedRow = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertFalse(SessionRowView.isActiveStreaming(finishedRow))
+        XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), [])
+    }
+
+    @MainActor
+    func testApplySessionActivityUpdateResortsSessionsByRecency() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-newer",
+                  "title": "Newer",
+                  "last_message_at": 200,
+                  "archived": false
+                },
+                {
+                  "session_id": "session-older",
+                  "title": "Older",
+                  "last_message_at": 100,
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-newer", "session-older"])
+
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-older",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: nil,
+                lastMessageAt: 300
+            )
+        )
+
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-older", "session-newer"])
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["session-older", "session-newer"]
+        )
+    }
+
+    @MainActor
+    func testApplyCreatedSessionInsertsRowExactlyOnceWithoutNetworkRequest() async throws {
+        var requestedPaths: [String] = []
+        let context = try makeContext()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load(modelContext: context)
+        let forkedSession = try makeSessionSummary(
+            id: "session-fork",
+            title: "Planning (fork)",
+            pinned: false,
+            archived: false
+        )
+
+        let didInsert = viewModel.applyCreatedSession(forkedSession, modelContext: context)
+        let didReapply = viewModel.applyCreatedSession(forkedSession, modelContext: context)
+        let cachedSessions = try CacheStore.cachedSessions(serverURL: server, in: context)
+
+        XCTAssertTrue(didInsert)
+        XCTAssertFalse(didReapply)
+        XCTAssertEqual(requestedPaths, ["/api/sessions"])
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-fork", "session-abc"])
+        XCTAssertEqual(viewModel.sessions.filter { $0.sessionId == "session-fork" }.count, 1)
+        XCTAssertTrue(cachedSessions.contains { $0.sessionId == "session-fork" })
+    }
+
+    @MainActor
+    func testApplyCreatedSessionIgnoresRowsWithoutSessionID() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load()
+        let didInsert = viewModel.applyCreatedSession(SessionSummary(title: "No ID"))
+
+        XCTAssertFalse(didInsert)
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-abc"])
+    }
+
+    func testArchiveOrDeleteClearsOnlyMatchingOpenChatSelection() throws {
+        let openSession = try makeSessionSummary(
+            id: "session-abc",
+            title: "Planning",
+            pinned: false,
+            archived: false
+        )
+        let otherSession = try makeSessionSummary(
+            id: "session-def",
+            title: "Research",
+            pinned: false,
+            archived: false
+        )
+
+        XCTAssertTrue(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: "session-abc")
+        )
+        XCTAssertTrue(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: " session-abc ")
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(otherSession, afterMutating: "session-abc")
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(nil, afterMutating: "session-abc")
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: nil)
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: "   ")
+        )
+    }
+
+    @MainActor
     func testRenameSessionBlocksBlankTitleBeforeNetworkRequest() async throws {
         let viewModel = try makeViewModel { request in
             XCTFail("Blank session titles should not make network requests: \(request.url?.path ?? "nil")")
@@ -2484,6 +2708,34 @@ final class SessionListMutationTests: XCTestCase {
         let client = APIClient(baseURL: server, session: session)
 
         return ArchivedSessionsViewModel(server: server, client: client)
+    }
+
+    func testNestedSelectionPolicyMatchesOnlyTrackedNestedSessions() {
+        XCTAssertTrue(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: ["forked-1", "forked-2"],
+                afterMutating: "forked-2"
+            ),
+            "Archiving a session forked from the open chat must close the stack that contains it"
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: ["forked-1"],
+                afterMutating: "unrelated"
+            )
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: [],
+                afterMutating: "forked-1"
+            )
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: ["forked-1"],
+                afterMutating: "  "
+            )
+        )
     }
 
     private func sessionListJSON(forLoadCount loadCount: Int) -> String {

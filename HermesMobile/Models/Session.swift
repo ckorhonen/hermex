@@ -345,6 +345,27 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         )
     }
 
+    /// Mirrors all stored fields so local activity patches preserve session-list metadata.
+    /// Update this when `SessionSummary` gains a new stored property.
+    ///
+    /// `activeStreamId`/`isStreaming` always replace the stored values (nil/false clears a
+    /// finished stream); `messageCount`/`lastMessageAt` replace only when non-nil, so an
+    /// update that doesn't know them keeps the row's existing metadata.
+    func replacingActivity(
+        activeStreamId: String?,
+        isStreaming: Bool,
+        messageCount: Int?,
+        lastMessageAt: Double?
+    ) -> SessionSummary {
+        replacing(
+            title: title,
+            activeStreamId: activeStreamId,
+            isStreaming: isStreaming,
+            messageCount: messageCount,
+            lastMessageAt: lastMessageAt
+        )
+    }
+
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
     /// Update this when `SessionSummary` gains a new stored property.
     func replacingTitle(with title: String) -> SessionSummary {
@@ -357,17 +378,25 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         replacing(title: title, activeStreamId: activeStreamId, isStreaming: isStreaming)
     }
 
-    private func replacing(title: String?, activeStreamId: String?, isStreaming: Bool?) -> SessionSummary {
+    /// `messageCount`/`lastMessageAt` replace only when non-nil, so callers that
+    /// don't know them keep the row's existing metadata.
+    private func replacing(
+        title: String?,
+        activeStreamId: String?,
+        isStreaming: Bool?,
+        messageCount: Int? = nil,
+        lastMessageAt: Double? = nil
+    ) -> SessionSummary {
         SessionSummary(
             sessionId: sessionId,
             title: title,
             workspace: workspace,
             model: model,
             modelProvider: modelProvider,
-            messageCount: messageCount,
+            messageCount: messageCount ?? self.messageCount,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            lastMessageAt: lastMessageAt,
+            lastMessageAt: lastMessageAt ?? self.lastMessageAt,
             pinned: pinned,
             archived: archived,
             projectId: projectId,
@@ -449,6 +478,21 @@ extension SessionSummary {
             .contains("cron")
     }
 
+}
+
+/// Live-activity fields an open chat pushes to the session list so its row reflects
+/// streaming state and recency without a full list reload. Mirrors the
+/// `onSessionTitleChange` seam: fired by `ChatView`, handled by
+/// `SessionListViewModel.applySessionActivityUpdate`.
+struct SessionActivityUpdate: Equatable {
+    let sessionID: String
+    /// The chat's current stream ID; nil when no response is streaming.
+    let activeStreamId: String?
+    let isStreaming: Bool
+    /// Total transcript message count; nil when the chat doesn't know it yet.
+    let messageCount: Int?
+    /// Timestamp of the latest transcript message; nil when unknown.
+    let lastMessageAt: Double?
 }
 
 /// Which noisy/non-primary session kinds the session list should show. Cron jobs,

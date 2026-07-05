@@ -103,6 +103,11 @@ struct ChatView: View {
     let childSessions: [SessionSummary]
     let onOpenRelatedSession: (SessionSummary) -> Void
     let onSessionTitleChange: (String, String) -> Void
+    let onSessionActivityChange: (SessionActivityUpdate) -> Void
+    /// Fired when this chat creates a new session (fork-from-message, slash-command
+    /// branch, profile switch with a new session) so the session list can insert its
+    /// row. Threaded like `onSessionTitleChange`.
+    let onSessionCreated: (SessionSummary) -> Void
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
@@ -159,6 +164,8 @@ struct ChatView: View {
         childSessions: [SessionSummary] = [],
         onOpenRelatedSession: @escaping (SessionSummary) -> Void = { _ in },
         onSessionTitleChange: @escaping (String, String) -> Void = { _, _ in },
+        onSessionActivityChange: @escaping (SessionActivityUpdate) -> Void = { _ in },
+        onSessionCreated: @escaping (SessionSummary) -> Void = { _ in },
         autoStartsVoiceInput: Bool = false
     ) {
         self.session = session
@@ -168,6 +175,8 @@ struct ChatView: View {
         self.childSessions = childSessions
         self.onOpenRelatedSession = onOpenRelatedSession
         self.onSessionTitleChange = onSessionTitleChange
+        self.onSessionActivityChange = onSessionActivityChange
+        self.onSessionCreated = onSessionCreated
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -430,6 +439,10 @@ struct ChatView: View {
             }
             .onChange(of: viewModel.activeStreamID) {
                 handleActiveStreamChange()
+                notifySessionActivityChange()
+            }
+            .onChange(of: viewModel.messages.count) {
+                notifySessionActivityChange()
             }
             .onChange(of: viewModel.cacheFirstReconcileScrollToken) {
                 // Open a brief snap window so the cache-first reconcile re-pin (and any
@@ -476,6 +489,11 @@ struct ChatView: View {
             .onChange(of: viewModel.displayTitle) { _, newTitle in
                 notifySessionTitleChange(newTitle)
             }
+            .onChange(of: session.title) {
+                // A rename made in the session list reassigns the selection this view
+                // was built from; adopt the new title so the header updates in place.
+                viewModel.applyExternalTitle(session.title)
+            }
     }
 
     private var chatPresentationContent: some View {
@@ -488,7 +506,9 @@ struct ChatView: View {
                     session: session,
                     server: server,
                     onAPIError: onAPIError,
-                    onSessionTitleChange: onSessionTitleChange
+                    onSessionTitleChange: onSessionTitleChange,
+                    onSessionActivityChange: onSessionActivityChange,
+                    onSessionCreated: onSessionCreated
                 )
             }
             .sheet(isPresented: $showsChildSessionsSheet) {
@@ -1277,6 +1297,27 @@ struct ChatView: View {
         return didLoad
     }
 
+    /// Pushes this chat's live activity (stream state, message count, latest message
+    /// timestamp) to the session list so its row updates without a list reload.
+    /// Mirrors `notifySessionTitleChange`.
+    private func notifySessionActivityChange() {
+        guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty
+        else {
+            return
+        }
+
+        onSessionActivityChange(SessionActivityUpdate(
+            sessionID: sessionID,
+            activeStreamId: viewModel.activeStreamID,
+            isStreaming: viewModel.activeStreamID != nil,
+            messageCount: viewModel.messages.isEmpty
+                ? nil
+                : viewModel.messagesOffset + viewModel.messages.count,
+            lastMessageAt: viewModel.messages.last?.timestamp
+        ))
+    }
+
     private func notifySessionTitleChange(_ title: String) {
         guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !sessionID.isEmpty
@@ -1409,7 +1450,7 @@ struct ChatView: View {
             }
             draftMessage = ""
         case .openedSession(let session):
-            forkedSession = session
+            openCreatedSession(session)
             draftMessage = ""
         case .unsupported(let friendlyMessage):
             viewModel.setSendErrorMessage(friendlyMessage)
@@ -1459,8 +1500,16 @@ struct ChatView: View {
         }
 
         if let session {
-            forkedSession = session
+            openCreatedSession(session)
         }
+    }
+
+    /// Opens a session this chat just created and reports it upward so the session
+    /// list inserts its row — otherwise the sidebar never learns about forked or
+    /// profile-switch sessions until a full reload.
+    private func openCreatedSession(_ session: SessionSummary) {
+        onSessionCreated(session)
+        forkedSession = session
     }
 
     private func handleProfileSelection(_ profile: ProfileSummary) {
@@ -1489,7 +1538,7 @@ struct ChatView: View {
         }
 
         if let session = outcome?.session {
-            forkedSession = session
+            openCreatedSession(session)
         }
     }
 
@@ -1764,6 +1813,12 @@ struct ChatView: View {
             ) {
                 endResponseCompletionBackgroundTask()
             }
+
+            // A sidebar rename issued mid-stream was deferred by
+            // applyExternalTitle's streaming guard; the .onChange trigger is
+            // edge-triggered, so flush it here or the header stays stale
+            // forever. No-op when the titles already agree.
+            viewModel.applyExternalTitle(session.title)
 
             // The agent may have edited files this turn, so refresh git state (status,
             // ahead/behind, branch) once the response finishes — keeps the toolbar badge,

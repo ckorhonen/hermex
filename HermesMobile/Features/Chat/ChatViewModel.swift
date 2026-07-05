@@ -4210,6 +4210,21 @@ final class ChatViewModel {
         }
     }
 
+    /// Applies a title set outside this chat (the session list's rename sheet) to the
+    /// header without any network side effects. Ignored while a response is streaming:
+    /// title stream events (`applyLiveActivitySessionTitle`) and the post-completion
+    /// refresh own the header then, and a stale list row must not clobber a fresher
+    /// locally generated title mid-stream.
+    func applyExternalTitle(_ title: String?) {
+        guard let title = Self.nonEmpty(title) else { return }
+        guard activeStreamID == nil else { return }
+
+        let externalDisplayTitle = Self.displayTitle(from: title)
+        guard externalDisplayTitle != displayTitle else { return }
+
+        displayTitle = externalDisplayTitle
+    }
+
     private func applyLiveActivitySessionTitle(_ title: String) {
         displayTitle = Self.displayTitle(from: title)
         liveActivityManager.update(.sessionTitle(displayTitle))

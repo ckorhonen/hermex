@@ -16,6 +16,7 @@ struct SessionListView: View {
     @Binding private var requestedNewChat: NewChatRequest?
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,6 +24,9 @@ struct SessionListView: View {
     @State private var viewModel: SessionListViewModel
     @State private var createdSession: SessionSummary?
     @State private var selectedDetailSession: SessionSummary?
+    /// Session IDs opened as nested pushes inside the current chat (forks,
+    /// profile switches); cleared whenever the top-level selection changes.
+    @State private var nestedOpenSessionIDs: Set<String> = []
     @State private var pendingNewChat: PendingNewChatRoute?
     @State private var selectedUtilityDestination: SessionListUtilityDestination?
     @State private var sessionPendingRename: SessionSummary?
@@ -109,6 +113,24 @@ struct SessionListView: View {
             deleteProject: delete,
             didCompleteInitialLoad: $didCompleteInitialLoad
         )
+        // Returning from the background can miss any amount of server-side activity
+        // (new sessions, finished streams, renames), so refresh on foreground —
+        // mirrors ChatView.handleScenePhaseChange's `.active` reconnect. The
+        // didCompleteInitialLoad guard inside refreshAfterReturningIfNeeded keeps
+        // the launch-time `.inactive` -> `.active` transition from double-loading.
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            refreshAfterReturningIfNeeded()
+        }
+        // Switching the top-level selection unmounts the previous chat's
+        // nested pushes, so their created-session tracking must not leak into
+        // the newly opened chat's stack.
+        .onChange(of: selectedDetailSession?.sessionId) { _, _ in
+            nestedOpenSessionIDs = []
+        }
+        .onChange(of: createdSession?.sessionId) { _, _ in
+            nestedOpenSessionIDs = []
+        }
     }
 
     private var phoneNavigationStack: some View {
@@ -131,7 +153,9 @@ struct SessionListView: View {
                     onAPIError: authManager.handleAPIError,
                     childSessions: childSessions(for: session),
                     onOpenRelatedSession: openSession,
-                    onSessionTitleChange: handleSessionTitleChange
+                    onSessionTitleChange: handleSessionTitleChange,
+                    onSessionActivityChange: handleSessionActivityChange,
+                    onSessionCreated: handleSessionCreated
                 )
             }
             .navigationDestination(item: $pendingNewChat) { route in
@@ -145,7 +169,9 @@ struct SessionListView: View {
                     server: server,
                     viewModel: viewModel,
                     onSessionTitleChange: handleSessionTitleChange,
-                    onAPIError: authManager.handleAPIError
+                    onSessionActivityChange: handleSessionActivityChange,
+                    onAPIError: authManager.handleAPIError,
+                    onSessionCreated: handleSessionCreated
                 )
             }
             .navigationDestination(item: $selectedUtilityDestination) { destination in
@@ -226,8 +252,13 @@ struct SessionListView: View {
                 server: server,
                 viewModel: viewModel,
                 onSessionTitleChange: handleSessionTitleChange,
+                onSessionActivityChange: handleSessionActivityChange,
                 onAPIError: authManager.handleAPIError,
                 onSessionCreated: { session in
+                    // Fires for the pending chat's own creation and (via the inner
+                    // ChatView) for sessions it forks: insert/refresh the sidebar row
+                    // first, then resolve the pending route onto the created session.
+                    handleSessionCreated(session)
                     pendingNewChat = nil
                     selectedDetailSession = session
                     unreadCompletedSessionIDs.remove(session.id)
@@ -243,7 +274,9 @@ struct SessionListView: View {
                 onAPIError: authManager.handleAPIError,
                 childSessions: childSessions(for: session),
                 onOpenRelatedSession: openSession,
-                onSessionTitleChange: handleSessionTitleChange
+                onSessionTitleChange: handleSessionTitleChange,
+                onSessionActivityChange: handleSessionActivityChange,
+                onSessionCreated: handleSessionCreated
             )
             .id(session.id)
         } else {
@@ -811,6 +844,28 @@ struct SessionListView: View {
         }
     }
 
+    /// Mirrors `handleSessionTitleChange` for live activity pushed from the open chat
+    /// (split view keeps the list visible next to it): patches the row in place so
+    /// its streaming indicator, message count, and recency ordering stay current.
+    /// The patched `activeStreamId` also flips `activeSessionMonitorTaskID` so the
+    /// 1 Hz active-row monitor starts while the stream runs.
+    private func handleSessionActivityChange(_ update: SessionActivityUpdate) {
+        viewModel.applySessionActivityUpdate(update, modelContext: modelContext)
+    }
+
+    /// Inserts a session an open chat just created (fork-from-message, slash-command
+    /// branch, profile switch) so the sidebar shows its row without a full reload.
+    private func handleSessionCreated(_ session: SessionSummary) {
+        viewModel.applyCreatedSession(session, modelContext: modelContext)
+        // Sessions created from inside an open chat (fork, profile switch)
+        // are pushed as *nested* navigation inside that chat, invisible to
+        // the top-level selection state. Remember them so archiving/deleting
+        // such a row can still close the chat stack that contains it.
+        if let sessionID = session.sessionId {
+            nestedOpenSessionIDs.insert(sessionID)
+        }
+    }
+
     private func monitorActiveSessionRows() async {
         while !Task.isCancelled {
             let taskID = activeSessionMonitorTaskID
@@ -900,6 +955,7 @@ struct SessionListView: View {
 
         if didArchive {
             SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
+            clearOpenSelectionIfNeeded(afterMutating: session)
         }
     }
 
@@ -913,6 +969,31 @@ struct SessionListView: View {
 
         if didDelete {
             SessionHaptics.sessionDeleted(isEnabled: isHapticsEnabled)
+            clearOpenSelectionIfNeeded(afterMutating: session)
+        }
+    }
+
+    /// Closes the open chat when its session was just archived or deleted, mirroring
+    /// how `handleSessionTitleChange` reassigns the matching selection on rename.
+    private func clearOpenSelectionIfNeeded(afterMutating session: SessionSummary) {
+        if SessionListOpenSelectionPolicy.shouldClearSelection(createdSession, afterMutating: session.sessionId) {
+            createdSession = nil
+            nestedOpenSessionIDs = []
+        }
+        if SessionListOpenSelectionPolicy.shouldClearSelection(selectedDetailSession, afterMutating: session.sessionId) {
+            selectedDetailSession = nil
+            nestedOpenSessionIDs = []
+        }
+        if SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+            nestedOpenSessionIDs: nestedOpenSessionIDs,
+            afterMutating: session.sessionId
+        ) {
+            // The mutated session lives somewhere inside the open chat's
+            // nested navigation; tearing down the top-level selection is the
+            // only handle we have on that stack.
+            createdSession = nil
+            selectedDetailSession = nil
+            nestedOpenSessionIDs = []
         }
     }
 
@@ -923,6 +1004,18 @@ struct SessionListView: View {
 
         if didRename, didChangeTitle {
             SessionHaptics.sessionRenamed(isEnabled: isHapticsEnabled)
+        }
+
+        if didRename, let sessionID = session.sessionId {
+            // Reassign a matching open selection so the already-open ChatView's
+            // `session` updates and its header adopts the new title.
+            let resolvedTitle = viewModel.sessions.first { $0.sessionId == sessionID }?.title ?? title
+            if createdSession?.sessionId == sessionID {
+                createdSession = createdSession?.replacingTitle(with: resolvedTitle)
+            }
+            if selectedDetailSession?.sessionId == sessionID {
+                selectedDetailSession = selectedDetailSession?.replacingTitle(with: resolvedTitle)
+            }
         }
 
         return didRename
@@ -1319,6 +1412,43 @@ private struct PendingNewChatRoute: Identifiable, Hashable {
     }
 }
 
+/// Decides whether archiving/deleting a session must also close the chat currently
+/// open for it (split-view detail column or pushed navigation destination), so a
+/// removed session never stays open as a stale, orphaned transcript. Extracted from
+/// `SessionListView` so the rule is unit-testable without SwiftUI state (same pattern
+/// as `DefaultProfileSelection`).
+enum SessionListOpenSelectionPolicy {
+    /// Whether a mutation to `rawMutatedSessionID` hits a session opened as a
+    /// nested push inside the current chat (fork/profile-switch), which the
+    /// top-level selection can't see directly.
+    static func nestedSelectionShouldClear(
+        nestedOpenSessionIDs: Set<String>,
+        afterMutating rawMutatedSessionID: String?
+    ) -> Bool {
+        guard let mutatedSessionID = rawMutatedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !mutatedSessionID.isEmpty
+        else {
+            return false
+        }
+
+        return nestedOpenSessionIDs.contains(mutatedSessionID)
+    }
+
+    static func shouldClearSelection(
+        _ selection: SessionSummary?,
+        afterMutating rawMutatedSessionID: String?
+    ) -> Bool {
+        guard let selectionID = selection?.sessionId,
+              let mutatedSessionID = rawMutatedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !mutatedSessionID.isEmpty
+        else {
+            return false
+        }
+
+        return selectionID == mutatedSessionID
+    }
+}
+
 enum SessionListUtilityDestination: Hashable, Identifiable {
     /// Optional section to scroll to when Settings opens — "Manage Servers"
     /// passes `.servers`, a plain avatar tap passes `nil` (#283).
@@ -1356,7 +1486,11 @@ private struct PendingNewChatView: View {
     let server: URL
     let viewModel: SessionListViewModel
     let onSessionTitleChange: (String, String) -> Void
+    let onSessionActivityChange: (SessionActivityUpdate) -> Void
     let onAPIError: (Error) -> Void
+    /// Fired when the pending chat's session is created and, forwarded through the
+    /// inner `ChatView`, when that chat creates further sessions (fork-from-message,
+    /// slash-command branch, profile switch) so the session list can react.
     let onSessionCreated: (SessionSummary) -> Void
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
@@ -1380,12 +1514,14 @@ private struct PendingNewChatView: View {
         server: URL,
         viewModel: SessionListViewModel,
         onSessionTitleChange: @escaping (String, String) -> Void,
+        onSessionActivityChange: @escaping (SessionActivityUpdate) -> Void = { _ in },
         onAPIError: @escaping (Error) -> Void,
         onSessionCreated: @escaping (SessionSummary) -> Void = { _ in }
     ) {
         self.server = server
         self.viewModel = viewModel
         self.onSessionTitleChange = onSessionTitleChange
+        self.onSessionActivityChange = onSessionActivityChange
         self.onAPIError = onAPIError
         self.onSessionCreated = onSessionCreated
         self.initialAttachments = initialAttachments
@@ -1407,6 +1543,8 @@ private struct PendingNewChatView: View {
                     initialAttachments: initialAttachments,
                     loadsInitialMessages: false,
                     onSessionTitleChange: onSessionTitleChange,
+                    onSessionActivityChange: onSessionActivityChange,
+                    onSessionCreated: onSessionCreated,
                     autoStartsVoiceInput: autoStartsVoiceInput
                 )
             } else {
