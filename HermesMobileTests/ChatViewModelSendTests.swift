@@ -926,6 +926,118 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }
 
+    /// Gateway approvals can arrive without a usable approval_id (upstream
+    /// issue 69). The respond path must recover the id from a pending
+    /// refetch when the queue head is the same card — and must never send an
+    /// empty approval_id, which the server rejects for gateway runs.
+    @MainActor
+    func testApprovalRespondRecoversMissingApprovalIdFromPendingRefetch() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        var respondBody: [String: Any]?
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/approval/pending" where respondBody == nil:
+                return apiTestJSONResponse("""
+                {
+                  "pending": {
+                    "approval_id": "ap-7",
+                    "command": "make install",
+                    "description": "Install command"
+                  },
+                  "pending_count": 1
+                }
+                """, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
+            case "/api/approval/respond":
+                respondBody = try XCTUnwrap(apiTestJSONBody(from: request))
+                return apiTestJSONResponse(#"{"ok": true, "choice": "once"}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run the installer")
+        XCTAssertTrue(didStart)
+
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(
+                approvalId: "",
+                command: "make install",
+                description: "Install command"
+            ),
+            pendingCount: 1
+        )))
+
+        let didRespond = await viewModel.respondToApproval(.once)
+
+        XCTAssertTrue(didRespond)
+        XCTAssertEqual(respondBody?["approval_id"] as? String, "ap-7")
+        XCTAssertNil(viewModel.approvalPrompt)
+    }
+
+    /// If the pending refetch shows a *different* card at the queue head, its
+    /// id must not be borrowed — answering with another approval's id can
+    /// approve the wrong command.
+    @MainActor
+    func testApprovalRespondDoesNotBorrowIdFromADifferentPendingCard() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        var respondBody: [String: Any]?
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/approval/pending" where respondBody == nil:
+                return apiTestJSONResponse("""
+                {
+                  "pending": {
+                    "approval_id": "ap-other",
+                    "command": "rm -rf /",
+                    "description": "A different approval"
+                  },
+                  "pending_count": 1
+                }
+                """, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
+            case "/api/approval/respond":
+                respondBody = try XCTUnwrap(apiTestJSONBody(from: request))
+                return apiTestJSONResponse(#"{"ok": true, "choice": "once"}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run the installer")
+        XCTAssertTrue(didStart)
+
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(
+                approvalId: "",
+                command: "make install",
+                description: "Install command"
+            ),
+            pendingCount: 1
+        )))
+
+        _ = await viewModel.respondToApproval(.once)
+
+        XCTAssertNotNil(respondBody)
+        XCTAssertNil(respondBody?["approval_id"], "A mismatched pending card's id must not be borrowed")
+    }
+
     @MainActor
     func testApprovalResponseFailureKeepsPromptAndPublishesActionError() async throws {
         let streamClient = SpySSEStreamingClient()

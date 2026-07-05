@@ -53,6 +53,22 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
         return "\(command ?? "")-\(description ?? "")-\(displayPatternKeys.joined(separator: ","))"
     }
 
+    /// `approvalId` with whitespace/empty normalized to nil — the id that is
+    /// actually usable in a respond request.
+    var normalizedApprovalID: String? {
+        Self.normalizedID(approvalId)
+    }
+
+    static func normalizedID(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+
+        return trimmed
+    }
+
     let approvalId: String?
     let command: String?
     let description: String?
@@ -99,6 +115,10 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case approvalId
         case approvalIdSnake = "approval_id"
+        // Upstream's gateway mapper resolves the id as
+        // `payload.get("approval_id") or payload.get("id")`; mirror that
+        // fallback so a gateway approval keyed only by `id` stays actionable.
+        case idFallback = "id"
         case command
         case description
         case patternKey
@@ -109,8 +129,13 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        approvalId = container.decodeLossyStringIfPresent(forKey: .approvalId)
-            ?? container.decodeLossyStringIfPresent(forKey: .approvalIdSnake)
+        // Gateway approvals can carry `"approval_id": ""` (the mapper emits
+        // the key unconditionally); an empty id is unusable and must decode
+        // as nil so the respond path knows to recover one (upstream issue 69).
+        approvalId = [CodingKeys.approvalId, .approvalIdSnake, .idFallback]
+            .lazy
+            .compactMap { Self.normalizedID(container.decodeLossyStringIfPresent(forKey: $0)) }
+            .first
         command = container.decodeLossyStringIfPresent(forKey: .command)
         description = container.decodeLossyStringIfPresent(forKey: .description)
         patternKey = container.decodeLossyStringIfPresent(forKey: .patternKey)

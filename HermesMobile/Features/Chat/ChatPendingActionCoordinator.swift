@@ -96,7 +96,7 @@ final class ChatPendingActionCoordinator {
             _ = try await client.respondApproval(
                 sessionID: prompt.sessionID,
                 choice: choice,
-                approvalID: prompt.pending.approvalId
+                approvalID: await resolvedApprovalID(for: prompt)
             )
             approvalPendingBySession[prompt.sessionID] = nil
             approvalPrompt = nil
@@ -107,6 +107,29 @@ final class ChatPendingActionCoordinator {
             delegate?.pendingActionCoordinatorDidFailAction(error)
             return false
         }
+    }
+
+    /// Gateway approvals can arrive without a usable `approval_id` (upstream
+    /// issue 69: the mapper relays the runner payload verbatim; only local
+    /// approvals get a server-stamped uuid). The respond endpoint requires an
+    /// id for gateway runs, so recover it from `/api/approval/pending` — but
+    /// only when the queue head is the same card. Never substitute another
+    /// card's id or the locally synthesized display id: a wrong id can answer
+    /// someone else's approval (upstream #527).
+    private func resolvedApprovalID(for prompt: ApprovalPromptState) async -> String? {
+        if let approvalID = prompt.pending.normalizedApprovalID {
+            return approvalID
+        }
+
+        guard let refetched = (try? await client.approvalPending(sessionID: prompt.sessionID))?.pending,
+              let recoveredID = refetched.normalizedApprovalID,
+              refetched.command == prompt.pending.command,
+              refetched.description == prompt.pending.description
+        else {
+            return nil
+        }
+
+        return recoveredID
     }
 
     @discardableResult
