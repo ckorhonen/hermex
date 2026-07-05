@@ -5177,8 +5177,12 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
 
         streamClient.emit(.transportError("The network connection was lost."))
+        // Wait on the *applied* final state, not just the request arrivals:
+        // `didReloadMessages` flips when the mock receives `/api/session`, but
+        // the transcript apply + stream finalize happen after the response is
+        // processed — asserting on request arrival races on slow CI runners.
         try await waitUntil {
-            didRequestStatus && didReloadMessages
+            didRequestStatus && didReloadMessages && viewModel.activeStreamID == nil
         }
 
         XCTAssertTrue(didRequestStatus)
