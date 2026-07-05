@@ -108,13 +108,17 @@ struct MessageBubbleView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, scaledTranscriptSpacing(2))
-        // While this row is the active streaming message, animate its height
-        // growth at the same curve as the bottom-follow scroll so the streaming
-        // edge stays visually stationary instead of stepping per word flush.
-        .animation(
-            isStreaming ? ChatMotion.streamingFollow(reduceMotion: reduceMotion) : nil,
-            value: messageText
-        )
+        // Paragraph and block geometry must be correct on the first streamed
+        // frame. Animating every token's Markdown layout makes a new paragraph
+        // interpolate from zero gap, so the first glyphs look glued to the
+        // previous paragraph until SwiftUI settles the layout. Keep scroll
+        // following animated at the transcript level, but make the active text
+        // row's own layout transaction immediate.
+        .transaction { transaction in
+            guard isStreaming else { return }
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 
     // MARK: - Assistant turn header (issue #258)
