@@ -6,6 +6,43 @@ struct DefaultProfileSelection: Equatable {
     let defaultModel: String?
 }
 
+/// Checkmark/selection state for the default-profile picker, extracted so the
+/// save flow's rollback behavior is unit-testable (upstream issue #59).
+struct ProfileSwitchSelectionState: Equatable {
+    private(set) var activeProfileName: String?
+    private(set) var selectedProfileName: String?
+    private(set) var saveError: String?
+
+    mutating func setActive(_ name: String?) {
+        activeProfileName = name
+    }
+
+    mutating func beginSave(name: String) {
+        saveError = nil
+        selectedProfileName = name
+    }
+
+    mutating func completeSave(activeName: String?) {
+        saveError = nil
+        activeProfileName = activeName
+    }
+
+    mutating func failSave(message: String?) {
+        saveError = message
+        // Roll back the optimistic checkmark: the server did not switch, so
+        // the previously active profile is still the truth (#59).
+        selectedProfileName = nil
+    }
+
+    func isSelected(profileNamed name: String) -> Bool {
+        selectedProfileName == name || activeProfileName == name
+    }
+
+    func isSaving(profileNamed name: String?) -> Bool {
+        selectedProfileName != nil && selectedProfileName == name
+    }
+}
+
 struct DefaultProfilePickerView: View {
     let server: URL
     let currentDefaultProfileName: String?
@@ -16,12 +53,10 @@ struct DefaultProfilePickerView: View {
 
     @State private var isLoading = false
     @State private var profiles: [ProfileSummary] = []
-    @State private var activeProfileName: String?
-    @State private var selectedProfileName: String?
+    @State private var selectionState = ProfileSwitchSelectionState()
     @State private var searchText = ""
     @State private var errorMessage: String?
     @State private var isSaving = false
-    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
@@ -29,7 +64,7 @@ struct DefaultProfilePickerView: View {
                 VStack(spacing: 24) {
                     ProfilePickerSearchField(text: $searchText)
 
-                    if let saveError {
+                    if let saveError = selectionState.saveError {
                         Text(saveError)
                             .font(.caption)
                             .foregroundStyle(.red)
@@ -141,7 +176,7 @@ struct DefaultProfilePickerView: View {
 
                 Spacer(minLength: 12)
 
-                if isSaving && selectedProfileName == profile.normalizedName {
+                if isSaving && selectionState.isSaving(profileNamed: profile.normalizedName) {
                     ProgressView()
                 } else if isSelected(profile) {
                     Image(systemName: "checkmark")
@@ -178,7 +213,7 @@ struct DefaultProfilePickerView: View {
 
     private func isSelected(_ profile: ProfileSummary) -> Bool {
         guard let name = profile.normalizedName else { return false }
-        return selectedProfileName == name || activeProfileName == name
+        return selectionState.isSelected(profileNamed: name)
     }
 
     private func profileDetails(_ profile: ProfileSummary) -> String? {
@@ -208,7 +243,7 @@ struct DefaultProfilePickerView: View {
         do {
             let response = try await APIClient(baseURL: server).profiles()
             profiles = response.profiles ?? []
-            activeProfileName = response.effectiveDefaultProfileName ?? currentDefaultProfileName
+            selectionState.setActive(response.effectiveDefaultProfileName ?? currentDefaultProfileName)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -220,14 +255,13 @@ struct DefaultProfilePickerView: View {
         guard let name = profile.normalizedName else { return }
 
         isSaving = true
-        saveError = nil
-        selectedProfileName = name
+        selectionState.beginSave(name: name)
         defer { isSaving = false }
 
         do {
             let response = try await APIClient(baseURL: server).switchProfile(name: name)
             if let error = response.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
-                saveError = error
+                selectionState.failSave(message: error)
                 return
             }
 
@@ -236,8 +270,9 @@ struct DefaultProfilePickerView: View {
             let updatedProfiles = response.profiles ?? profiles
             let selectionResponse = ProfilesResponse(profiles: updatedProfiles, active: resolvedName)
             profiles = updatedProfiles
-            activeProfileName = selectionResponse.effectiveDefaultProfileName ?? name
+            selectionState.completeSave(activeName: selectionResponse.effectiveDefaultProfileName ?? name)
 
+            let activeProfileName = selectionState.activeProfileName
             let selection = DefaultProfileSelection(
                 name: activeProfileName ?? name,
                 displayName: selectionResponse.displayName(for: activeProfileName) ?? profile.displayName,
@@ -246,7 +281,7 @@ struct DefaultProfilePickerView: View {
             onSave(selection)
             dismiss()
         } catch {
-            saveError = error.localizedDescription
+            selectionState.failSave(message: error.localizedDescription)
         }
     }
 }
