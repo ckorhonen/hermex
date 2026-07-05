@@ -70,6 +70,7 @@ struct SettingsView: View {
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var toolCardsStartExpanded = false
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
+    @AppStorage(ChatTranscriptDisplaySettings.fontScaleKey) private var chatFontScale = ChatTranscriptDisplaySettings.defaultFontScale
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
@@ -163,6 +164,15 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     AppIconSettingsSection()
+                }
+
+                SettingsCard(title: String(localized: "Font")) {
+                    SettingsFontScaleRow(
+                        value: chatFontScaleBinding,
+                        formattedValue: ChatTranscriptDisplaySettings.formattedFontScale(chatFontScale)
+                    )
+
+                    SettingsFootnote(String(localized: "Adjusts chat message text while preserving Dynamic Type. On iPad or Mac, Command-Plus and Command-Minus change this from the chat screen."))
                 }
 
                 SettingsCard(title: String(localized: "Interaction")) {
@@ -703,6 +713,13 @@ struct SettingsView: View {
                     }
                 }
             }
+        )
+    }
+
+    private var chatFontScaleBinding: Binding<Double> {
+        Binding(
+            get: { ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale) },
+            set: { chatFontScale = ChatTranscriptDisplaySettings.clampedFontScale($0) }
         )
     }
 
@@ -1492,6 +1509,62 @@ private struct SettingsPickerRow<SelectionValue: Hashable, Options: View>: View 
         .pickerStyle(.menu)
         .labelsHidden()
         .accessibilityLabel(Text(title))
+    }
+}
+
+private struct SettingsFontScaleRow: View {
+    @Binding var value: Double
+    let formattedValue: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                SettingsRowLabel(title: String(localized: "Chat Font Size"), systemImage: "textformat.size")
+
+                Spacer(minLength: 12)
+
+                Text(formattedValue)
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .accessibilityHidden(true)
+            }
+
+            HStack(spacing: 12) {
+                Text(String(localized: "A"))
+                    .font(AppFont.caption())
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+
+                Slider(
+                    value: $value,
+                    in: ChatTranscriptDisplaySettings.minimumFontScale...ChatTranscriptDisplaySettings.maximumFontScale,
+                    step: ChatTranscriptDisplaySettings.fontScaleStep
+                )
+                .accessibilityLabel(String(localized: "Chat font size"))
+                .accessibilityValue(formattedValue)
+
+                Text(String(localized: "A"))
+                    .font(AppFont.title3())
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+
+            if value != ChatTranscriptDisplaySettings.defaultFontScale {
+                Button {
+                    value = ChatTranscriptDisplaySettings.defaultFontScale
+                } label: {
+                    Text(String(localized: "Reset to Default"))
+                        .font(AppFont.caption(weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(ZoraBrand.selectionAccent)
+                .accessibilityLabel(String(localized: "Reset chat font size to default"))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 88 : 70, alignment: .leading)
     }
 }
 

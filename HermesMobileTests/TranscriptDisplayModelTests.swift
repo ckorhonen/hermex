@@ -322,6 +322,59 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         )
     }
 
+    func testFontScaleKeyIsStableAndDistinct() {
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.fontScaleKey,
+            "chatTranscript.fontScale"
+        )
+        XCTAssertNotEqual(
+            ChatTranscriptDisplaySettings.fontScaleKey,
+            ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey
+        )
+    }
+
+    func testFontScaleClampKeepsSliderAndShortcutsInSupportedRange() {
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.clampedFontScale(0.25),
+            ChatTranscriptDisplaySettings.minimumFontScale,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.clampedFontScale(2.0),
+            ChatTranscriptDisplaySettings.maximumFontScale,
+            accuracy: 0.001
+        )
+    }
+
+    func testFormattedFontScaleUsesClampedPercentage() {
+        XCTAssertEqual(ChatTranscriptDisplaySettings.formattedFontScale(1.0), "100%")
+        XCTAssertEqual(ChatTranscriptDisplaySettings.formattedFontScale(1.2), "120%")
+        XCTAssertEqual(ChatTranscriptDisplaySettings.formattedFontScale(2.0), "135%")
+    }
+
+    func testFontScaleShortcutAdjustmentsSnapAndClamp() {
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.increasedFontScale(from: 0.99),
+            1.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.decreasedFontScale(from: 1.01),
+            1.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.increasedFontScale(from: ChatTranscriptDisplaySettings.maximumFontScale),
+            ChatTranscriptDisplaySettings.maximumFontScale,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ChatTranscriptDisplaySettings.decreasedFontScale(from: ChatTranscriptDisplaySettings.minimumFontScale),
+            ChatTranscriptDisplaySettings.minimumFontScale,
+            accuracy: 0.001
+        )
+    }
+
     func testAssistantTurnHeaderShowsForAssistantTextTurnWhenEnabled() {
         XCTAssertTrue(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: "assistant",

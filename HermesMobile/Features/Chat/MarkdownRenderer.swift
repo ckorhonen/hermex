@@ -384,8 +384,14 @@ private struct ChatMarkdownView: View {
     let isStreaming: Bool
     let onOpenWikiRoute: ((WikiRoute) -> Void)?
 
+    @AppStorage(ChatTranscriptDisplaySettings.fontScaleKey) private var chatFontScale = ChatTranscriptDisplaySettings.defaultFontScale
+
     private var displayContent: String {
         WikiWikilinkPreprocessor.replacingWikilinks(in: content)
+    }
+
+    private var effectiveFontScale: Double {
+        ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
     }
 
     var body: some View {
@@ -394,10 +400,11 @@ private struct ChatMarkdownView: View {
             .markdownTextStyle {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
+                FontSize(.em(effectiveFontScale))
             }
             .markdownTextStyle(\.code) {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
+                FontSize(.em(0.88 * effectiveFontScale))
                 ForegroundColor(ZoraBrand.foreground)
                 BackgroundColor(ZoraBrand.inlineCodeFill)
             }

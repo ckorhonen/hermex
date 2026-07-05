@@ -765,6 +765,46 @@ enum ChatTranscriptDisplaySettings {
     static let hidesAttachmentPathsKey = "chatTranscript.hidesAttachmentPaths"
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"
     static let wrapsCodeBlockLinesKey = "chatTranscript.wrapsCodeBlockLines"
+    static let fontScaleKey = "chatTranscript.fontScale"
+    static let defaultFontScale = 1.0
+    static let minimumFontScale = 0.85
+    static let maximumFontScale = 1.35
+    static let fontScaleStep = 0.05
+
+    static func clampedFontScale(_ value: Double) -> Double {
+        boundedFontScale(roundedFontScale(value))
+    }
+
+    static func increasedFontScale(from value: Double) -> Double {
+        let current = boundedFontScale(value)
+        // When a stored value lands between slider ticks, step back to the readable default
+        // before moving past it; otherwise Command-Plus from 99% would jump straight to 105%.
+        if current < defaultFontScale, defaultFontScale - current <= fontScaleStep {
+            return defaultFontScale
+        }
+        return clampedFontScale(current + fontScaleStep)
+    }
+
+    static func decreasedFontScale(from value: Double) -> Double {
+        let current = boundedFontScale(value)
+        // Symmetric snap so Command-Minus from 101% returns to 100% before shrinking further.
+        if current > defaultFontScale, current - defaultFontScale <= fontScaleStep {
+            return defaultFontScale
+        }
+        return clampedFontScale(current - fontScaleStep)
+    }
+
+    static func formattedFontScale(_ value: Double) -> String {
+        "\(Int((clampedFontScale(value) * 100).rounded()))%"
+    }
+
+    private static func roundedFontScale(_ value: Double) -> Double {
+        (value / fontScaleStep).rounded() * fontScaleStep
+    }
+
+    private static func boundedFontScale(_ value: Double) -> Double {
+        min(maximumFontScale, max(minimumFontScale, value))
+    }
 
     /// Backs the Settings → Chat "Right-to-Left Chat Layout" toggle (issue #259).
     /// Local-only: there is no server settings object to mirror an `rtl` flag

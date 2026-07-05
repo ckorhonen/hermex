@@ -9,6 +9,10 @@ enum AppFont {
         system(.body, weight: weight)
     }
 
+    static func body(size: CGFloat, weight: Font.Weight? = nil) -> Font {
+        .system(size: size, weight: weight)
+    }
+
     static func callout(weight: Font.Weight? = nil) -> Font {
         system(.callout, weight: weight)
     }
