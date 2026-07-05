@@ -120,6 +120,39 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertFalse(media.isAudioCandidate)
     }
 
+    func testVideoMediaReferencesAreVideoCandidates() throws {
+        let segments = TranscriptMediaParser.segments(
+            in: "Watch: MEDIA:/tmp/demo-run.mp4 and MEDIA:https://cdn.example.test/clips/output.MOV?download=1"
+        )
+        let media = mediaReferences(in: segments)
+
+        XCTAssertEqual(media.map(\.rawReference), [
+            "/tmp/demo-run.mp4",
+            "https://cdn.example.test/clips/output.MOV?download=1"
+        ])
+        XCTAssertTrue(try XCTUnwrap(media.first).isVideoCandidate)
+        XCTAssertFalse(try XCTUnwrap(media.first).isRasterImageCandidate)
+        XCTAssertFalse(try XCTUnwrap(media.first).isAudioCandidate)
+        XCTAssertTrue(try XCTUnwrap(media.last).isVideoCandidate)
+    }
+
+    func testUpstreamVideoExtensionsAreVideoCandidates() {
+        // Mirrors hermes-webui's _VIDEO_EXTS (static/ui.js).
+        for ext in ["mp4", "webm", "mkv", "mov", "avi", "ogv", "m4v"] {
+            let reference = TranscriptMediaReference(rawReference: "/tmp/clip.\(ext)")
+            XCTAssertTrue(reference.isVideoCandidate, "expected .\(ext) to be a video candidate")
+        }
+    }
+
+    func testNonVideoMediaReferenceIsNotVideoCandidate() {
+        for raw in ["/tmp/result.png", "/tmp/zora-output.mp3", "/tmp/report.md", "https://cdn.example.test/output"] {
+            XCTAssertFalse(
+                TranscriptMediaReference(rawReference: raw).isVideoCandidate,
+                "expected \(raw) not to be a video candidate"
+            )
+        }
+    }
+
     func testNonAudioMediaReferenceIsNotAudioCandidate() {
         let segments = TranscriptMediaParser.segments(in: "MEDIA:/tmp/result.png MEDIA:/tmp/report.pdf")
         let media = mediaReferences(in: segments)
