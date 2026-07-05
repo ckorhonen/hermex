@@ -245,6 +245,7 @@
 		C04400000000000000000001 /* CacheFallbackPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04400000000000000000002 /* CacheFallbackPolicy.swift */; };
 		C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04400000000000000000004 /* CacheFallbackPolicyTests.swift */; };
 		C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000002 /* ChatStreamCoordinator.swift */; };
+		C0D100000000000000000001 /* ChatListenPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D100000000000000000002 /* ChatListenPlayback.swift */; };
 		C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */; };
 		C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04700000000000000000002 /* ChatPendingActionCoordinator.swift */; };
 		C04800000000000000000001 /* ChatAttachmentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04800000000000000000002 /* ChatAttachmentCoordinator.swift */; };
@@ -474,6 +475,7 @@
 		C1A042000000000000000004 /* ClarificationRequestOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationRequestOverlay.swift; sourceTree = "<group>"; };
 		C1A042000000000000000006 /* ClarificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationTests.swift; sourceTree = "<group>"; };
 		A02400000000000000000002 /* Goal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goal.swift; sourceTree = "<group>"; };
+		C0D100000000000000000002 /* ChatListenPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListenPlayback.swift; sourceTree = "<group>"; };
 		C04600000000000000000002 /* ChatStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinator.swift; sourceTree = "<group>"; };
 		C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinatorTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
@@ -1165,6 +1167,7 @@
 				031031031031031031031008 /* MarkdownMathFormatter+Support.swift */,
 				C04100000000000000000002 /* ChatComposerConfigLoader.swift */,
 				C04600000000000000000002 /* ChatStreamCoordinator.swift */,
+				C0D100000000000000000002 /* ChatListenPlayback.swift */,
 				C04700000000000000000002 /* ChatPendingActionCoordinator.swift */,
 				C04800000000000000000002 /* ChatAttachmentCoordinator.swift */,
 				1A2B3C4D5E6F7000000000D5 /* ChatViewModel.swift */,
@@ -1683,6 +1686,7 @@
 				031031031031031031031007 /* MarkdownMathFormatter+Support.swift in Sources */,
 				C04100000000000000000001 /* ChatComposerConfigLoader.swift in Sources */,
 				C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */,
+				C0D100000000000000000001 /* ChatListenPlayback.swift in Sources */,
 				C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */,
 				C04800000000000000000001 /* ChatAttachmentCoordinator.swift in Sources */,
 				1A2B3C4D5E6F7000000000D4 /* ChatViewModel.swift in Sources */,
