@@ -102,6 +102,7 @@ struct ChatView: View {
     let loadsInitialMessages: Bool
     let childSessions: [SessionSummary]
     let onOpenRelatedSession: (SessionSummary) -> Void
+    let onSessionTitleChange: (String, String) -> Void
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
@@ -157,6 +158,7 @@ struct ChatView: View {
         loadsInitialMessages: Bool = true,
         childSessions: [SessionSummary] = [],
         onOpenRelatedSession: @escaping (SessionSummary) -> Void = { _ in },
+        onSessionTitleChange: @escaping (String, String) -> Void = { _, _ in },
         autoStartsVoiceInput: Bool = false
     ) {
         self.session = session
@@ -165,6 +167,7 @@ struct ChatView: View {
         self.loadsInitialMessages = loadsInitialMessages
         self.childSessions = childSessions
         self.onOpenRelatedSession = onOpenRelatedSession
+        self.onSessionTitleChange = onSessionTitleChange
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -470,6 +473,9 @@ struct ChatView: View {
                 guard viewModel.responseCompletionHapticTrigger > 0 else { return }
                 handleResponseCompletionSideEffects()
             }
+            .onChange(of: viewModel.displayTitle) { _, newTitle in
+                notifySessionTitleChange(newTitle)
+            }
     }
 
     private var chatPresentationContent: some View {
@@ -478,7 +484,12 @@ struct ChatView: View {
                 chatToolbarContent
             }
             .navigationDestination(item: $forkedSession) { session in
-                ChatView(session: session, server: server, onAPIError: onAPIError)
+                ChatView(
+                    session: session,
+                    server: server,
+                    onAPIError: onAPIError,
+                    onSessionTitleChange: onSessionTitleChange
+                )
             }
             .sheet(isPresented: $showsChildSessionsSheet) {
                 ChildSessionsSheet(
@@ -1243,6 +1254,7 @@ struct ChatView: View {
 
     private func loadMessages(appliesInitialFocus: Bool = true) async {
         await viewModel.loadMessages(modelContext: modelContext)
+        notifySessionTitleChange(displayTitle)
         await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
         if appliesInitialFocus {
             applyInitialComposerFocusPolicyIfNeeded()
@@ -1267,6 +1279,19 @@ struct ChatView: View {
         }
 
         return didLoad
+    }
+
+    private func notifySessionTitleChange(_ title: String) {
+        guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty
+        else {
+            return
+        }
+
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        onSessionTitleChange(sessionID, trimmedTitle)
     }
 
     private func submitGoalDraft(_ submittedGoal: String) async {

@@ -128,7 +128,8 @@ struct SessionListView: View {
                     server: server,
                     onAPIError: authManager.handleAPIError,
                     childSessions: childSessions(for: session),
-                    onOpenRelatedSession: openSession
+                    onOpenRelatedSession: openSession,
+                    onSessionTitleChange: handleSessionTitleChange
                 )
             }
             .navigationDestination(item: $pendingNewChat) { route in
@@ -141,6 +142,7 @@ struct SessionListView: View {
                     modelProviderName: route.modelProviderName,
                     server: server,
                     viewModel: viewModel,
+                    onSessionTitleChange: handleSessionTitleChange,
                     onAPIError: authManager.handleAPIError
                 )
             }
@@ -221,6 +223,7 @@ struct SessionListView: View {
                 modelProviderName: route.modelProviderName,
                 server: server,
                 viewModel: viewModel,
+                onSessionTitleChange: handleSessionTitleChange,
                 onAPIError: authManager.handleAPIError
             )
             .id(route.id)
@@ -232,7 +235,8 @@ struct SessionListView: View {
                 server: server,
                 onAPIError: authManager.handleAPIError,
                 childSessions: childSessions(for: session),
-                onOpenRelatedSession: openSession
+                onOpenRelatedSession: openSession,
+                onSessionTitleChange: handleSessionTitleChange
             )
             .id(session.id)
         } else {
@@ -785,6 +789,22 @@ struct SessionListView: View {
         }
     }
 
+    private func handleSessionTitleChange(sessionID: String, title: String) {
+        let changed = viewModel.applyTitleUpdate(
+            sessionID: sessionID,
+            title: title,
+            modelContext: modelContext
+        )
+        guard changed else { return }
+
+        if createdSession?.sessionId == sessionID {
+            createdSession = createdSession?.replacingTitle(with: title)
+        }
+        if selectedDetailSession?.sessionId == sessionID {
+            selectedDetailSession = selectedDetailSession?.replacingTitle(with: title)
+        }
+    }
+
     private func monitorActiveSessionRows() async {
         while !Task.isCancelled {
             let taskID = activeSessionMonitorTaskID
@@ -1303,6 +1323,7 @@ private struct PendingNewChatView: View {
 
     let server: URL
     let viewModel: SessionListViewModel
+    let onSessionTitleChange: (String, String) -> Void
     let onAPIError: (Error) -> Void
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
@@ -1325,10 +1346,12 @@ private struct PendingNewChatView: View {
         modelProviderName: String? = nil,
         server: URL,
         viewModel: SessionListViewModel,
+        onSessionTitleChange: @escaping (String, String) -> Void,
         onAPIError: @escaping (Error) -> Void
     ) {
         self.server = server
         self.viewModel = viewModel
+        self.onSessionTitleChange = onSessionTitleChange
         self.onAPIError = onAPIError
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
@@ -1348,6 +1371,7 @@ private struct PendingNewChatView: View {
                     initialDraft: draftMessage,
                     initialAttachments: initialAttachments,
                     loadsInitialMessages: false,
+                    onSessionTitleChange: onSessionTitleChange,
                     autoStartsVoiceInput: autoStartsVoiceInput
                 )
             } else {

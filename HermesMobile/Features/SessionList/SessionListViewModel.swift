@@ -491,6 +491,36 @@ final class SessionListViewModel {
         return mutatingSessionIDs.contains(sessionId)
     }
 
+    @discardableResult
+    func applyTitleUpdate(
+        sessionID rawSessionID: String?,
+        title rawTitle: String,
+        modelContext: ModelContext? = nil
+    ) -> Bool {
+        guard let sessionID = Self.nonEmpty(rawSessionID),
+              let title = Self.nonEmpty(rawTitle),
+              let existingIndex = sessions.firstIndex(where: { $0.sessionId == sessionID })
+        else {
+            return false
+        }
+
+        let existingSession = sessions[existingIndex]
+        guard Self.nonEmpty(existingSession.title) != title else { return false }
+
+        let updatedSession = existingSession.replacingTitle(with: title)
+        sessions[existingIndex] = updatedSession
+
+        if let modelContext {
+            do {
+                try CacheStore.cacheSession(updatedSession, serverURL: server, in: modelContext)
+            } catch {
+                cacheErrorMessage = error.localizedDescription
+            }
+        }
+
+        return true
+    }
+
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
         guard !isViewingCachedData else {
             actionErrorMessage = String(localized: "Reconnect to the server to rename a session.")
