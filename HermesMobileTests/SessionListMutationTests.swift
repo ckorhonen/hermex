@@ -554,11 +554,17 @@ final class SessionListMutationTests: XCTestCase {
 
         await viewModel.load()
         XCTAssertEqual(viewModel.sessions.first?.activeStreamId, "stream-123")
+        let monitoredSessionIDs = SessionListViewModel.monitorSessionIDs(in: viewModel.sessions)
 
-        let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-123"])
+        let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: ["stream-123"],
+            sessionIDs: monitoredSessionIDs
+        )
 
         XCTAssertEqual(refreshResult, .reloaded)
         XCTAssertNil(viewModel.sessions.first?.activeStreamId)
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), Set(["session-streaming"]))
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), [])
         XCTAssertEqual(requestPaths, ["/api/sessions", "/api/chat/stream/status", "/api/sessions"])
     }
 
@@ -637,25 +643,42 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(loadCount, 1)
         XCTAssertEqual(viewModel.sessions.first?.isStreaming, true)
         XCTAssertNil(viewModel.sessions.first?.activeStreamId)
+        let monitoredSessionIDs = SessionListViewModel.monitorSessionIDs(in: viewModel.sessions)
 
         // A row flagged `is_streaming` with no stream ID gives the monitor nothing to
         // poll. The first tick reloads once so a stale flag can clear...
-        let firstRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let firstRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(firstRefresh, .reloaded)
         XCTAssertEqual(loadCount, 2)
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), [])
 
         // ...but the 1 Hz ticks that follow must not keep re-fetching the whole list.
-        let secondRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
-        let thirdRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let secondRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
+        let thirdRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(secondRefresh, .unchanged)
         XCTAssertEqual(thirdRefresh, .unchanged)
         XCTAssertEqual(loadCount, 2)
 
         // Seeing real stream IDs again arms the one-shot reload for the next transition.
-        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-123"])
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: ["stream-123"],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(loadCount, 2)
 
-        let refreshAfterNewTransition = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let refreshAfterNewTransition = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(refreshAfterNewTransition, .reloaded)
         XCTAssertEqual(loadCount, 3)
     }

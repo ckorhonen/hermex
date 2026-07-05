@@ -55,6 +55,8 @@ final class SessionListViewModel {
     private(set) var switchingActiveProfileName: String?
     private(set) var activeProfileErrorMessage: String?
     private(set) var mutatingSessionIDs: Set<String> = []
+    private var trackedActiveSessionIDs: Set<String> = []
+    private var recentlyCompletedSessionIDs: Set<String> = []
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
     private var activeRemoteSearchQuery: String?
@@ -318,12 +320,32 @@ final class SessionListViewModel {
     @discardableResult
     func refreshActiveSessionStatesIfNeeded(
         streamIDs rawStreamIDs: [String],
+        sessionIDs rawSessionIDs: [String] = [],
         modelContext: ModelContext? = nil
     ) async -> ActiveSessionStateRefreshResult {
         guard !isViewingCachedData, !isLoading else { return .unchanged }
 
         let streamIDs = Self.normalizedStreamIDs(rawStreamIDs)
+        let monitoredSessionIDs = Set(rawSessionIDs.compactMap(Self.nonEmpty))
+
+        if !monitoredSessionIDs.isEmpty {
+            updateTrackedActiveSessions(monitoredSessionIDs: monitoredSessionIDs)
+        }
+
         guard !streamIDs.isEmpty else {
+            if !monitoredSessionIDs.isEmpty {
+                // A monitored row can be active via `is_streaming` before the server
+                // provides an `active_stream_id`. Give that state one reload chance per
+                // transition, matching the unmonitored fallback below, instead of reloading
+                // the list on every monitor tick.
+                guard !didReloadForStreamlessActiveSessions else { return .unchanged }
+                didReloadForStreamlessActiveSessions = true
+                return await reloadTrackedSessionStates(
+                    monitoredSessionIDs: monitoredSessionIDs,
+                    modelContext: modelContext
+                )
+            }
+
             // A session can report `is_streaming` without a stream ID to poll. Reload at
             // most once per transition into that state so a stale flag gets one chance to
             // clear, instead of a full list reload on every monitor tick.
@@ -338,7 +360,10 @@ final class SessionListViewModel {
             do {
                 let response = try await client.chatStreamStatus(streamID: streamID)
                 guard response.active == false else { continue }
-                return await load(modelContext: modelContext) ? .reloaded : loadFailureRefreshResult
+                return await reloadTrackedSessionStates(
+                    monitoredSessionIDs: monitoredSessionIDs,
+                    modelContext: modelContext
+                )
             } catch {
                 guard !error.isCancellation else { return .unchanged }
                 if case APIError.unauthorized = error {
@@ -350,6 +375,37 @@ final class SessionListViewModel {
         }
 
         return .unchanged
+    }
+
+    func consumeRecentlyCompletedSessionIDs() -> Set<String> {
+        defer { recentlyCompletedSessionIDs.removeAll() }
+        return recentlyCompletedSessionIDs
+    }
+
+    private func reloadTrackedSessionStates(
+        monitoredSessionIDs: Set<String>,
+        modelContext: ModelContext?
+    ) async -> ActiveSessionStateRefreshResult {
+        let didLoad = await load(modelContext: modelContext)
+        guard didLoad else { return loadFailureRefreshResult }
+
+        if !monitoredSessionIDs.isEmpty {
+            updateTrackedActiveSessions(monitoredSessionIDs: monitoredSessionIDs)
+        }
+
+        return .reloaded
+    }
+
+    private func updateTrackedActiveSessions(monitoredSessionIDs: Set<String>) {
+        let currentActiveSessionIDs = Self.activeSessionIDs(in: sessions, matching: monitoredSessionIDs)
+        let completedSessionIDs = trackedActiveSessionIDs
+            .intersection(monitoredSessionIDs)
+            .subtracting(currentActiveSessionIDs)
+
+        recentlyCompletedSessionIDs.formUnion(completedSessionIDs)
+        trackedActiveSessionIDs = trackedActiveSessionIDs
+            .subtracting(monitoredSessionIDs)
+            .union(currentActiveSessionIDs)
     }
 
     func loadSessionForDeepLink(id rawSessionID: String, modelContext: ModelContext? = nil) async -> SessionSummary? {
@@ -885,6 +941,27 @@ final class SessionListViewModel {
 
     static func activeStreamIDs(in sessions: [SessionSummary]) -> [String] {
         normalizedStreamIDs(sessions.compactMap(\.activeStreamId))
+    }
+
+    static func monitorSessionIDs(in sessions: [SessionSummary]) -> [String] {
+        Array(Set(sessions.map(\.id).compactMap(nonEmpty))).sorted()
+    }
+
+    private static func activeSessionIDs(
+        in sessions: [SessionSummary],
+        matching monitoredSessionIDs: Set<String>
+    ) -> Set<String> {
+        Set(sessions.compactMap { session in
+            guard monitoredSessionIDs.contains(session.id), isActiveSession(session) else {
+                return nil
+            }
+
+            return session.id
+        })
+    }
+
+    private static func isActiveSession(_ session: SessionSummary) -> Bool {
+        session.isStreaming == true || nonEmpty(session.activeStreamId) != nil
     }
 
     private static func normalizedStreamIDs(_ rawStreamIDs: [String]) -> [String] {

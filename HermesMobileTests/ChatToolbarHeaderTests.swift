@@ -3,23 +3,19 @@ import XCTest
 @testable import HermesMobile
 
 final class ChatToolbarHeaderTests: XCTestCase {
-    func testSubtitleDoesNotShowWorkspaceBasename() {
-        XCTAssertEqual(
+    func testSubtitleResolverOmitsWorkspaceAndProfileContext() {
+        XCTAssertNil(
             ChatToolbarSubtitleResolver.subtitle(
                 workspacePath: "/Users/example/hermes-mobile",
                 profileTitle: "Default"
-            ),
-            "Default"
+            )
         )
-    }
 
-    func testSubtitleFallsBackToStableProfileTitle() {
-        XCTAssertEqual(
+        XCTAssertNil(
             ChatToolbarSubtitleResolver.subtitle(
                 workspacePath: nil,
                 profileTitle: "Work"
-            ),
-            "Work"
+            )
         )
     }
 
@@ -45,24 +41,18 @@ final class ChatToolbarHeaderTests: XCTestCase {
             headerBarBottom
         )
         XCTAssertEqual(
-            ChatHeaderBackgroundGradientLayout.solidBottomY(topSafeAreaInset: topSafeAreaInset),
-            headerBarBottom + ChatHeaderBackgroundGradientLayout.solidExtensionBelowHeader
+            ChatHeaderBackgroundGradientLayout.visibleHeight(topSafeAreaInset: topSafeAreaInset),
+            headerBarBottom + ChatHeaderBackgroundGradientLayout.fadeExtensionBelowHeader
         )
     }
 
-    func testHeaderGradientKeepsFadeTailToVeryTopOfTranscript() {
+    func testHeaderGradientUsesSingleLinearFadeThroughTitlebar() {
         let topSafeAreaInset: CGFloat = 59
         let visibleHeight = ChatHeaderBackgroundGradientLayout.visibleHeight(topSafeAreaInset: topSafeAreaInset)
-        let solidHeight = ChatHeaderBackgroundGradientLayout.solidHeight(topSafeAreaInset: topSafeAreaInset)
+        let headerBarBottom = ChatHeaderBackgroundGradientLayout.headerBarBottomY(topSafeAreaInset: topSafeAreaInset)
 
-        XCTAssertEqual(visibleHeight - solidHeight, ChatHeaderBackgroundGradientLayout.fadeTailHeight)
-        XCTAssertLessThanOrEqual(ChatHeaderBackgroundGradientLayout.fadeTailHeight, 18)
-        XCTAssertLessThan(ChatHeaderBackgroundGradientLayout.solidStop(topSafeAreaInset: topSafeAreaInset), 1)
-        XCTAssertLessThan(
-            ChatHeaderBackgroundGradientLayout.solidStop(topSafeAreaInset: topSafeAreaInset),
-            ChatHeaderBackgroundGradientLayout.fadeKneeStop(topSafeAreaInset: topSafeAreaInset)
-        )
-        XCTAssertLessThan(ChatHeaderBackgroundGradientLayout.fadeKneeStop(topSafeAreaInset: topSafeAreaInset), 1)
+        XCTAssertEqual(visibleHeight - headerBarBottom, ChatHeaderBackgroundGradientLayout.fadeExtensionBelowHeader)
+        XCTAssertLessThanOrEqual(ChatHeaderBackgroundGradientLayout.fadeExtensionBelowHeader, 12)
     }
 
     func testHeaderGradientUsesMinimumHeightForCompactTopInsets() {
@@ -73,30 +63,26 @@ final class ChatToolbarHeaderTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             ChatHeaderBackgroundGradientLayout.minimumVisibleHeight,
             ChatHeaderBackgroundGradientLayout.inlineHeaderBarHeight
-                + ChatHeaderBackgroundGradientLayout.solidExtensionBelowHeader
-                + ChatHeaderBackgroundGradientLayout.fadeTailHeight
+                + ChatHeaderBackgroundGradientLayout.fadeExtensionBelowHeader
+                + 8
         )
     }
 
     func testHeaderGradientClampsNegativeTopInsets() {
         XCTAssertEqual(
-            ChatHeaderBackgroundGradientLayout.solidHeight(topSafeAreaInset: -24),
+            ChatHeaderBackgroundGradientLayout.headerBarBottomY(topSafeAreaInset: -24),
             ChatHeaderBackgroundGradientLayout.inlineHeaderBarHeight
-                + ChatHeaderBackgroundGradientLayout.solidExtensionBelowHeader
         )
     }
 
-    func testHeaderGradientStopsRemainOrderedAcrossCommonSafeAreaInsets() {
+    func testHeaderGradientCoversHeaderAcrossCommonSafeAreaInsets() {
         let topSafeAreaInsets: [CGFloat] = [0, 24, 47, 59, 102]
 
         for topSafeAreaInset in topSafeAreaInsets {
-            let solidStop = ChatHeaderBackgroundGradientLayout.solidStop(topSafeAreaInset: topSafeAreaInset)
-            let fadeKneeStop = ChatHeaderBackgroundGradientLayout.fadeKneeStop(topSafeAreaInset: topSafeAreaInset)
+            let visibleHeight = ChatHeaderBackgroundGradientLayout.visibleHeight(topSafeAreaInset: topSafeAreaInset)
+            let headerBarBottom = ChatHeaderBackgroundGradientLayout.headerBarBottomY(topSafeAreaInset: topSafeAreaInset)
 
-            XCTAssertGreaterThanOrEqual(solidStop, 0, "solidStop for \(topSafeAreaInset)")
-            XCTAssertLessThan(solidStop, 1, "solidStop for \(topSafeAreaInset)")
-            XCTAssertGreaterThan(fadeKneeStop, solidStop, "fadeKneeStop for \(topSafeAreaInset)")
-            XCTAssertLessThan(fadeKneeStop, 1, "fadeKneeStop for \(topSafeAreaInset)")
+            XCTAssertGreaterThanOrEqual(visibleHeight, headerBarBottom, "visibleHeight for \(topSafeAreaInset)")
         }
     }
 }

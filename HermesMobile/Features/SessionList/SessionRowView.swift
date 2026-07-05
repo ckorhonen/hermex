@@ -10,10 +10,13 @@ struct SessionRowView: View {
     let session: SessionSummary
     var showsMessageCount = true
     var showsWorkspace = true
+    var showsUnreadCompletionIndicator = false
     var isViewingCachedData = false
     var nestingLevel = 0
 
     private var isNestedChild: Bool { nestingLevel > 0 || session.isChildSession || session.isSubagentSession }
+    private var isActiveStreaming: Bool { Self.isActiveStreaming(session) }
+    private var showsLeadingIndicator: Bool { isActiveStreaming || showsUnreadCompletionIndicator }
 
     var body: some View {
         HStack(alignment: .top, spacing: isNestedChild ? 8 : 10) {
@@ -22,7 +25,10 @@ struct SessionRowView: View {
                     .padding(.top, streamingIndicatorTopPadding - 2)
             }
 
-            ActiveSessionStreamingIndicator(isActive: Self.isActiveStreaming(session))
+            SessionActivityIndicator(
+                isActive: isActiveStreaming,
+                showsUnreadCompletion: showsUnreadCompletionIndicator
+            )
                 .padding(.top, streamingIndicatorTopPadding)
 
             rowContent
@@ -35,7 +41,7 @@ struct SessionRowView: View {
             Rectangle()
                 .fill(rowDivider)
                 .frame(height: colorSchemeContrast == .increased ? 1 : 0.65)
-                .padding(.leading, Self.isActiveStreaming(session) ? 30 : 0)
+                .padding(.leading, showsLeadingIndicator ? 30 : 0)
                 .allowsHitTesting(false)
         }
         .contentShape(Rectangle())
@@ -74,12 +80,15 @@ struct SessionRowView: View {
 
     static func accessibilityStateLabels(
         for session: SessionSummary,
-        isViewingCachedData: Bool
+        isViewingCachedData: Bool,
+        showsUnreadCompletionIndicator: Bool = false
     ) -> [String] {
         var labels: [String] = []
 
         if isActiveStreaming(session) {
             labels.append(String(localized: "Streaming"))
+        } else if showsUnreadCompletionIndicator {
+            labels.append(String(localized: "Unread"))
         }
 
         if session.pinned == true {
@@ -309,7 +318,7 @@ struct SessionRowView: View {
             return ZoraBrand.listDivider.opacity(0.62)
         }
 
-        return Self.isActiveStreaming(session) ? ZoraBrand.listDividerStrong : ZoraBrand.listDivider
+        return isActiveStreaming ? ZoraBrand.listDividerStrong : ZoraBrand.listDivider
     }
 
     private var childBranchGlyph: some View {
@@ -339,7 +348,11 @@ struct SessionRowView: View {
     private var accessibilitySummary: String {
         var parts = [displayTitle]
 
-        parts.append(contentsOf: Self.accessibilityStateLabels(for: session, isViewingCachedData: isViewingCachedData))
+        parts.append(contentsOf: Self.accessibilityStateLabels(
+            for: session,
+            isViewingCachedData: isViewingCachedData,
+            showsUnreadCompletionIndicator: showsUnreadCompletionIndicator
+        ))
 
         if let metadataLabel {
             parts.append(metadataLabel)
@@ -426,19 +439,20 @@ private struct SessionRowStateBadge: View {
     }
 }
 
-private struct ActiveSessionStreamingIndicator: View {
+private struct SessionActivityIndicator: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
     let isActive: Bool
+    let showsUnreadCompletion: Bool
 
     var body: some View {
         Circle()
-            .fill(.green)
+            .fill(dotColor)
             .frame(width: 9, height: 9)
             .scaleEffect(reduceMotion || !isActive ? 1 : (isExpanded ? 1.4 : 1.0))
-            .opacity(isActive ? 1 : 0)
-            .shadow(color: Color.green.opacity(isActive ? 0.42 : 0), radius: 8)
+            .opacity(isVisible ? 1 : 0)
+            .shadow(color: dotColor.opacity(isVisible ? 0.42 : 0), radius: 8)
             .frame(width: 13, height: 13)
             .accessibilityHidden(true)
             .onAppear {
@@ -447,12 +461,23 @@ private struct ActiveSessionStreamingIndicator: View {
             .onChange(of: isActive) {
                 updateAnimation()
             }
+            .onChange(of: showsUnreadCompletion) {
+                updateAnimation()
+            }
             .onChange(of: reduceMotion) {
                 updateAnimation()
             }
             .onDisappear {
                 isExpanded = false
             }
+    }
+
+    private var isVisible: Bool {
+        isActive || showsUnreadCompletion
+    }
+
+    private var dotColor: Color {
+        isActive ? .green : .yellow
     }
 
     private func updateAnimation() {

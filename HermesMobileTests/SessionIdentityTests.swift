@@ -121,6 +121,26 @@ final class SessionIdentityTests: XCTestCase {
         )
     }
 
+    func testSessionRowAccessibilityStateLabelsIncludeUnreadCompletionWhenInactive() {
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: SessionSummary(sessionId: "completed"),
+                isViewingCachedData: false,
+                showsUnreadCompletionIndicator: true
+            ),
+            ["Unread"]
+        )
+
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: SessionSummary(sessionId: "active", activeStreamId: "stream-123"),
+                isViewingCachedData: false,
+                showsUnreadCompletionIndicator: true
+            ),
+            ["Streaming"]
+        )
+    }
+
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

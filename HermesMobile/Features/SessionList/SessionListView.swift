@@ -36,13 +36,13 @@ struct SessionListView: View {
     @State private var searchChromeIsExpanded = false
     @State private var selectedProjectID: String?
     @State private var didCompleteInitialLoad = false
+    @State private var unreadCompletedSessionIDs: Set<String> = []
     @FocusState private var searchFieldIsFocused: Bool
     @AppStorage(SessionSidebarDisclosureSettings.profilesAreExpandedKey)
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
     @AppStorage(SessionSidebarDisclosureSettings.projectsAreExpandedKey)
     private var projectsAreExpanded = SessionSidebarDisclosureSettings.defaultProjectsAreExpanded
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
-    @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
     @AppStorage(SessionRowDisplaySettings.showReadOnlySessionsKey) private var showsReadOnlySessions = true
@@ -224,7 +224,13 @@ struct SessionListView: View {
                 server: server,
                 viewModel: viewModel,
                 onSessionTitleChange: handleSessionTitleChange,
-                onAPIError: authManager.handleAPIError
+                onAPIError: authManager.handleAPIError,
+                onSessionCreated: { session in
+                    guard pendingNewChat?.id == route.id else { return }
+                    pendingNewChat = nil
+                    selectedDetailSession = session
+                    unreadCompletedSessionIDs.remove(session.id)
+                }
             )
             .id(route.id)
         } else if let destination = selectedUtilityDestination {
@@ -311,8 +317,9 @@ struct SessionListView: View {
                 emptyDescription: emptySessionsDescription,
                 isSearchActive: isSearchingSessions,
                 showsMessageCount: showsSessionMessageCount,
-                showsWorkspace: showsSessionWorkspace,
+                showsWorkspace: false,
                 selectedSessionID: usesSplitNavigation ? selectedDetailSession?.id : nil,
+                unreadCompletedSessionIDs: unreadCompletedSessionIDs,
                 actions: sessionRowActions
             )
 
@@ -497,24 +504,19 @@ struct SessionListView: View {
                 Text("Chat")
                     .font(.headline.weight(.semibold))
             }
-            .foregroundStyle(newSessionButtonForegroundColor)
+            .foregroundStyle(ZoraBrand.ink)
             .padding(.horizontal, 22)
             .frame(height: 58)
             // Lock the hit region to the visible capsule so taps in the padding,
             // rounded ends, and icon↔text gap start a new chat instead of falling
             // through to the session row behind the FAB (issue #242).
             .contentShape(Capsule())
-            .background {
-                if let fill = newSessionButtonSolidThemeFill {
-                    Capsule().fill(fill)
-                }
+            .background(Color.white, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.white.opacity(0.45), lineWidth: 0.75)
+                    .allowsHitTesting(false)
             }
-            .sessionsChromeGlass(
-                isInteractive: true,
-                tint: newSessionButtonGlassTint,
-                fallbackMaterial: .regularMaterial,
-                in: Capsule()
-            )
         }
         .buttonStyle(SessionListFloatingChatButtonStyle())
         .disabled(viewModel.isViewingCachedData || pendingNewChat != nil)
@@ -677,7 +679,8 @@ struct SessionListView: View {
         let activeSessions = visibleSessions.filter(SessionRowView.isActiveStreaming)
         return ActiveSessionMonitorTaskID(
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
-            hasActiveRows: !activeSessions.isEmpty,
+            sessionIDs: SessionListViewModel.monitorSessionIDs(in: activeSessions),
+            hasTrackedRows: !activeSessions.isEmpty,
             isViewingCachedData: viewModel.isViewingCachedData
         )
     }
@@ -720,6 +723,7 @@ struct SessionListView: View {
     private func openSession(_ session: SessionSummary) {
         pendingNewChat = nil
         selectedUtilityDestination = nil
+        unreadCompletedSessionIDs.remove(session.id)
 
         if usesSplitNavigation {
             selectedDetailSession = session
@@ -808,10 +812,11 @@ struct SessionListView: View {
     private func monitorActiveSessionRows() async {
         while !Task.isCancelled {
             let taskID = activeSessionMonitorTaskID
-            guard taskID.hasActiveRows, !taskID.isViewingCachedData else { return }
+            guard taskID.hasTrackedRows, !taskID.isViewingCachedData else { return }
 
             do {
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+                let interval: UInt64 = taskID.streamIDs.isEmpty ? 3_000_000_000 : 1_000_000_000
+                try await Task.sleep(nanoseconds: interval)
             } catch {
                 return
             }
@@ -820,12 +825,20 @@ struct SessionListView: View {
 
             let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
                 streamIDs: taskID.streamIDs,
+                sessionIDs: taskID.sessionIDs,
                 modelContext: modelContext
             )
+            markCompletedSessionsUnread(viewModel.consumeRecentlyCompletedSessionIDs())
             if refreshResult == .reloaded || refreshResult == .failed {
                 handleLastError()
             }
         }
+    }
+
+    private func markCompletedSessionsUnread(_ sessionIDs: Set<String>) {
+        guard !sessionIDs.isEmpty else { return }
+        let openSessionIDs = Set([selectedDetailSession?.id, createdSession?.id].compactMap { $0 })
+        unreadCompletedSessionIDs.formUnion(sessionIDs.subtracting(openSessionIDs))
     }
 
     @MainActor
@@ -1313,7 +1326,8 @@ private struct SessionSearchTaskID: Hashable {
 
 private struct ActiveSessionMonitorTaskID: Hashable {
     let streamIDs: [String]
-    let hasActiveRows: Bool
+    let sessionIDs: [String]
+    let hasTrackedRows: Bool
     let isViewingCachedData: Bool
 }
 
@@ -1325,6 +1339,7 @@ private struct PendingNewChatView: View {
     let viewModel: SessionListViewModel
     let onSessionTitleChange: (String, String) -> Void
     let onAPIError: (Error) -> Void
+    let onSessionCreated: (SessionSummary) -> Void
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
     let profileName: String?
@@ -1347,12 +1362,14 @@ private struct PendingNewChatView: View {
         server: URL,
         viewModel: SessionListViewModel,
         onSessionTitleChange: @escaping (String, String) -> Void,
-        onAPIError: @escaping (Error) -> Void
+        onAPIError: @escaping (Error) -> Void,
+        onSessionCreated: @escaping (SessionSummary) -> Void = { _ in }
     ) {
         self.server = server
         self.viewModel = viewModel
         self.onSessionTitleChange = onSessionTitleChange
         self.onAPIError = onAPIError
+        self.onSessionCreated = onSessionCreated
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
@@ -1487,6 +1504,7 @@ private struct PendingNewChatView: View {
         if let session {
             SessionHaptics.sessionCreated(isEnabled: isHapticsEnabled)
             createdSession = session
+            onSessionCreated(session)
         } else {
             creationErrorMessage = viewModel.actionErrorMessage
                 ?? viewModel.lastError?.localizedDescription
