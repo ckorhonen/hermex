@@ -442,6 +442,34 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(response.pendingCount, 1)
     }
 
+    /// Gateway approvals can arrive with `"approval_id": ""` (upstream's
+    /// mapper emits the key unconditionally, empty when the runner payload
+    /// carries no usable id) or with the id under `id` — the mapper's own
+    /// fallback key. An empty id must normalize to nil so the respond path
+    /// knows it has to recover one (upstream issue 69).
+    func testGatewayApprovalNormalizesEmptyApprovalIdAndAcceptsIdFallback() {
+        let emptyID = SSEEventDecoder.decode(
+            eventType: "approval",
+            data: #"{"approval_id":"","command":"sudo rm -rf /tmp/x","description":"High risk","pattern_key":"sudo_exec"}"#
+        )
+        guard case .approvalPending(let emptyResponse) = emptyID else {
+            XCTFail("Expected approvalPending, got \(emptyID)")
+            return
+        }
+        XCTAssertNil(emptyResponse.pending?.approvalId)
+        XCTAssertEqual(emptyResponse.pending?.command, "sudo rm -rf /tmp/x")
+
+        let fallbackID = SSEEventDecoder.decode(
+            eventType: "approval",
+            data: #"{"id":"ap-42","command":"make install","description":"Install"}"#
+        )
+        guard case .approvalPending(let fallbackResponse) = fallbackID else {
+            XCTFail("Expected approvalPending, got \(fallbackID)")
+            return
+        }
+        XCTAssertEqual(fallbackResponse.pending?.approvalId, "ap-42")
+    }
+
     func testDecodesTitleEventFromUpstreamPayload() {
         let event = SSEEventDecoder.decode(
             eventType: "title",
