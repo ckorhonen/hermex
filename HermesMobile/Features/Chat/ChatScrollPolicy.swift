@@ -62,3 +62,18 @@ enum ChatScrollPolicy {
         return now < cooldownUntil
     }
 }
+
+/// Mutable holder for the follow-scroll cooldown deadline.
+///
+/// Deliberately a plain reference box (owned by `ChatView` via `@State` so its
+/// identity survives view-struct recreation) rather than a `Date?` stored
+/// directly in `@State`: the deadline is rewritten on every scroll-metrics
+/// delivery while a gesture or deceleration is in flight, and it is only ever
+/// read imperatively inside the follow-scroll handlers — never to render the
+/// body. Storing the changing `Date` in `@State` invalidated the entire
+/// `ChatView` body once per scrolled frame for the whole drag, which is pure
+/// overhead on long transcripts (see issue #32).
+@MainActor
+final class ChatScrollCooldownBox {
+    var deadline: Date?
+}

@@ -655,6 +655,32 @@ final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
             "A plain VStack eagerly builds every transcript row and regresses long-chat scroll performance."
         )
     }
+
+    /// The follow-scroll cooldown deadline is rewritten on every scroll-metrics
+    /// delivery while a drag or deceleration is in flight. Holding it in
+    /// `@State Date?` invalidated the whole ChatView body once per scrolled
+    /// frame; it must stay in the non-invalidating reference box (it is only
+    /// read imperatively, never rendered).
+    func testScrollCooldownDeadlineIsNotViewInvalidatingState() throws {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let sourceURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("HermesMobile/Features/Chat/ChatView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertNil(
+            source.range(
+                of: #"@State\s+private\s+var\s+\w*[Cc]ooldown\w*\s*:\s*Date\??"#,
+                options: .regularExpression
+            ),
+            "A per-frame-changing cooldown Date in @State invalidates the whole ChatView body on every scrolled frame."
+        )
+        XCTAssertTrue(
+            source.contains("= ChatScrollCooldownBox()"),
+            "The cooldown deadline should live in the ChatScrollCooldownBox reference box so writes during a scroll gesture do not invalidate the body."
+        )
+    }
 }
 
 /// The expand/collapse toggle on reasoning/tool cards must survive the
