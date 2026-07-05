@@ -906,6 +906,38 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testApplyTitleUpdatePatchesLocalRowAndCacheWithoutNetworkRequest() async throws {
+        var requestedPaths: [String] = []
+        let context = try makeContext()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load(modelContext: context)
+        let didApply = viewModel.applyTitleUpdate(
+            sessionID: " session-abc ",
+            title: "  Launch Notes  ",
+            modelContext: context
+        )
+        let didReapply = viewModel.applyTitleUpdate(
+            sessionID: "session-abc",
+            title: "Launch Notes",
+            modelContext: context
+        )
+        let cachedSessions = try CacheStore.cachedSessions(serverURL: server, in: context)
+
+        XCTAssertTrue(didApply)
+        XCTAssertFalse(didReapply)
+        XCTAssertEqual(requestedPaths, ["/api/sessions"])
+        XCTAssertEqual(viewModel.sessions.first?.title, "Launch Notes")
+        XCTAssertEqual(viewModel.sessions.first?.pinned, false)
+        XCTAssertEqual(cachedSessions.first?.title, "Launch Notes")
+    }
+
+    @MainActor
     func testRenameSessionBlocksBlankTitleBeforeNetworkRequest() async throws {
         let viewModel = try makeViewModel { request in
             XCTFail("Blank session titles should not make network requests: \(request.url?.path ?? "nil")")
