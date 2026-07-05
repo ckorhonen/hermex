@@ -19,6 +19,11 @@ final class TaskDetailViewModel {
 
     private let client: APIClient
 
+    private enum RunningElapsedMutation {
+        case unchanged
+        case set(Double?)
+    }
+
     var recentRunItems: [CronRunListItem] {
         CronRunListItem.items(runs: runs, outputs: outputs)
     }
@@ -72,7 +77,7 @@ final class TaskDetailViewModel {
     }
 
     func runNow() async -> Bool {
-        let success = await mutateJob { jobID in
+        let success = await mutateJob(runningElapsedMutation: .set(0)) { jobID in
             try await client.runCron(jobID: jobID)
         }
         if success {
@@ -82,7 +87,7 @@ final class TaskDetailViewModel {
     }
 
     func pause(reason: String? = nil) async -> Bool {
-        let success = await mutateJob { jobID in
+        let success = await mutateJob(runningElapsedMutation: .set(nil)) { jobID in
             try await client.pauseCron(jobID: jobID, reason: reason)
         }
         if success {
@@ -92,9 +97,13 @@ final class TaskDetailViewModel {
     }
 
     func resume() async -> Bool {
-        return await mutateJob { jobID in
+        let success = await mutateJob(runningElapsedMutation: .set(nil)) { jobID in
             try await client.resumeCron(jobID: jobID)
         }
+        if success {
+            runningElapsed = nil
+        }
+        return success
     }
 
     func update(from draft: CronJobEditorDraft) async -> Bool {
@@ -147,6 +156,7 @@ final class TaskDetailViewModel {
     }
 
     private func mutateJob(
+        runningElapsedMutation: RunningElapsedMutation = .unchanged,
         action: (String) async throws -> CronMutationResponse
     ) async -> Bool {
         guard let jobID = job.jobId else {
@@ -172,13 +182,27 @@ final class TaskDetailViewModel {
                 if let updatedRelatedSession = updatedJob.relatedSession {
                     relatedSession = updatedRelatedSession
                 }
-                lastMutation = .upsert(updatedJob)
+                lastMutation = listMutation(for: updatedJob, runningElapsedMutation: runningElapsedMutation)
+            } else if case .set = runningElapsedMutation {
+                lastMutation = listMutation(for: job, runningElapsedMutation: runningElapsedMutation)
             }
             return true
         } catch {
             lastError = error
             actionErrorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    private func listMutation(
+        for job: CronJob,
+        runningElapsedMutation: RunningElapsedMutation
+    ) -> CronJobListMutation {
+        switch runningElapsedMutation {
+        case .unchanged:
+            return .upsert(job)
+        case .set(let runningElapsed):
+            return .upsertWithRunningState(job, runningElapsed: runningElapsed)
         }
     }
 

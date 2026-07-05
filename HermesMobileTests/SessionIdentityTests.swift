@@ -204,6 +204,41 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertTrue(session.isChildSession)
     }
 
+    func testSessionSummaryFromDetailPreservesLineageAndReadOnlyFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let detail = try decoder.decode(
+            SessionDetail.self,
+            from: Data("""
+            {
+              "session_id": "child-detail",
+              "title": "Worker transcript",
+              "parent_session_id": "parent-1",
+              "relationship_type": "child_session",
+              "parent_title": "Parent chat",
+              "read_only": true,
+              "session_source": "subagent",
+              "source_tag": "subagent",
+              "sidebar_reference_sessions": [
+                {"session_id": "parent-1", "title": "Parent chat"}
+              ]
+            }
+            """.utf8)
+        )
+
+        let summary = SessionSummary(from: detail)
+
+        XCTAssertEqual(summary.parentSessionId, "parent-1")
+        XCTAssertEqual(summary.relationshipType, "child_session")
+        XCTAssertEqual(summary.parentTitle, "Parent chat")
+        XCTAssertEqual(summary.sessionSource, "subagent")
+        XCTAssertEqual(summary.sourceTag, "subagent")
+        XCTAssertTrue(summary.isReadOnlySession)
+        XCTAssertTrue(summary.isChildSession)
+        XCTAssertEqual(summary.sidebarReferenceSessions?.map(\.id), ["parent-1"])
+    }
+
     func testSessionSidebarRowsNestChildSessionsUnderVisibleParents() {
         let parent = SessionSummary(sessionId: "parent", title: "Main chat")
         let child = SessionSummary(

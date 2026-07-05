@@ -3496,15 +3496,9 @@ final class ChatViewModel {
 
     private func handleBackgroundResults(_ results: [BackgroundResult]) {
         for result in results {
-            let prompt: String
-            if let taskID = result.taskId,
-               let trackedPrompt = backgroundPromptsByTaskID.removeValue(forKey: taskID) {
-                prompt = trackedPrompt
-            } else if let resultPrompt = result.prompt, !resultPrompt.isEmpty {
-                prompt = resultPrompt
-            } else {
-                prompt = "Background task"
-            }
+            guard let taskID = result.taskId,
+                  let prompt = backgroundPromptsByTaskID.removeValue(forKey: taskID)
+            else { continue }
 
             appendLocalAssistantMessage(
                 Self.backgroundResultText(

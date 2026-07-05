@@ -3,6 +3,7 @@ import Observation
 
 enum CronJobListMutation: Equatable {
     case upsert(CronJob)
+    case upsertWithRunningState(CronJob, runningElapsed: Double?)
     case delete(jobID: String)
 }
 
@@ -98,6 +99,15 @@ final class TasksViewModel {
         switch mutation {
         case .upsert(let job):
             upsert(job)
+        case .upsertWithRunningState(let job, let runningElapsed):
+            upsert(job)
+            guard let jobID = job.jobId else { break }
+            if let runningElapsed {
+                runningJobs[jobID] = runningElapsed
+            } else {
+                runningJobs.removeValue(forKey: jobID)
+            }
+            jobs.sort(by: sortJobs)
         case .delete(let jobID):
             jobs.removeAll { $0.jobId == jobID }
             runningJobs.removeValue(forKey: jobID)
