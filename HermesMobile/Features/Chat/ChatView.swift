@@ -1020,11 +1020,12 @@ struct ChatView: View {
             latestTranscriptMessageRole: latestTranscriptMessageRole,
             isScrolledNearBottom: isScrolledNearBottom,
             activeStreamID: viewModel.activeStreamID,
+            chatFontScale: effectiveChatFontScale,
             streamingScrollTrigger: viewModel.streamingScrollTrigger,
             cacheFirstReconcileScrollToken: viewModel.cacheFirstReconcileScrollToken,
             bottomAnchorID: bottomAnchorID,
-            transcriptMessageSpacing: transcriptMessageSpacing,
-            transcriptBlockSpacing: transcriptBlockSpacing,
+            transcriptMessageSpacing: ChatTranscriptSpacing.scaled(transcriptMessageSpacing, fontScale: effectiveChatFontScale),
+            transcriptBlockSpacing: ChatTranscriptSpacing.scaled(transcriptBlockSpacing, fontScale: effectiveChatFontScale),
             transcriptBottomInsetHeight: transcriptBottomInsetHeight,
             scrollToBottomButtonBottomPadding: scrollToBottomButtonBottomPadding,
             localAttachmentPreviews: viewModel.localAttachmentPreviews,
@@ -1113,6 +1114,10 @@ struct ChatView: View {
     /// sidebar, settings, and navigation chrome stay in the default direction.
     private var chatLayoutDirection: LayoutDirection {
         ChatTranscriptDisplaySettings.chatLayoutDirection(rtlEnabled: rtlChatLayoutEnabled)
+    }
+
+    private var effectiveChatFontScale: Double {
+        ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
     }
 
     private func increaseChatFontScale() {

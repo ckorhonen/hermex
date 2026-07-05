@@ -798,6 +798,10 @@ enum ChatTranscriptDisplaySettings {
         "\(Int((clampedFontScale(value) * 100).rounded()))%"
     }
 
+    static func scaledLayoutValue(_ value: CGFloat, fontScale: Double) -> CGFloat {
+        value * CGFloat(clampedFontScale(fontScale))
+    }
+
     private static func roundedFontScale(_ value: Double) -> Double {
         (value / fontScaleStep).rounded() * fontScaleStep
     }
