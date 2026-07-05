@@ -35,13 +35,11 @@ enum AttachmentAudioDetection {
 }
 
 /// Formats a playback offset/duration as `m:ss` (or `h:mm:ss` past an hour).
-/// Non-finite or negative inputs clamp to `0:00` so the label stays monotonic
-/// and never shows `NaN`.
+/// Non-finite, negative, or out-of-range inputs clamp to `0:00` so the label
+/// stays monotonic and never shows `NaN`.
 enum AudioDurationFormatter {
     static func string(from seconds: Double) -> String {
-        guard seconds.isFinite, seconds > 0 else { return "0:00" }
-
-        let total = Int(seconds.rounded(.down))
+        guard seconds > 0, let total = Int(lossyTruncating: seconds) else { return "0:00" }
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         let secs = total % 60

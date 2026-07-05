@@ -59,3 +59,19 @@ enum JSONValue: Codable, Equatable {
         return "\(value)"
     }
 }
+
+extension Int {
+    /// Truncating `Double` → `Int` conversion that returns `nil` instead of
+    /// trapping when the value is non-finite or outside `Int`'s representable
+    /// range. `Int(_: Double)` calls a fatal-error precondition on such
+    /// values, so any server-supplied number must come through here.
+    init?(lossyTruncating value: Double) {
+        guard value.isFinite,
+              let converted = Int(exactly: value.rounded(.towardZero))
+        else {
+            return nil
+        }
+
+        self = converted
+    }
+}

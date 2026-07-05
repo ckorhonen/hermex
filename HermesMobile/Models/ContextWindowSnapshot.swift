@@ -45,7 +45,9 @@ enum ContextWindowFormatter {
         guard let used = snapshot.tokensUsed, let total = snapshot.contextLength, total > 0 else {
             return nil
         }
-        let pct = Int((Double(used) / Double(total)) * 100)
+        guard let pct = Int(lossyTruncating: (Double(used) / Double(total)) * 100) else {
+            return nil
+        }
         return String(localized: "\(pct)% context")
     }
 

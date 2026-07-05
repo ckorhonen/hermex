@@ -217,8 +217,7 @@ enum ToolCallDisplayFormatter {
 
         switch value {
         case .number(let value):
-            guard value.isFinite else { return nil }
-            return Int(value)
+            return Int(lossyTruncating: value)
         case .string(let value):
             return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
         case .bool, .object, .array, .null:
