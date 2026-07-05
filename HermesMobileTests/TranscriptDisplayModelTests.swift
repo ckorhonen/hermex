@@ -671,7 +671,7 @@ final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
 
         XCTAssertNil(
             source.range(
-                of: #"@State\s+private\s+var\s+\w*[Cc]ooldown\w*\s*:\s*Date\??"#,
+                of: #"@State\s+(?:private\s+)?var\s+\w*[Cc]ooldown\w*\s*:\s*Date\??"#,
                 options: .regularExpression
             ),
             "A per-frame-changing cooldown Date in @State invalidates the whole ChatView body on every scrolled frame."
