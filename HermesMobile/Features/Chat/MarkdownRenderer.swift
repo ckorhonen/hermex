@@ -404,7 +404,7 @@ private struct ChatMarkdownView: View {
             }
             .markdownTextStyle(\.code) {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
+                FontSize(.em(0.88 * effectiveFontScale))
                 ForegroundColor(ZoraBrand.foreground)
                 BackgroundColor(ZoraBrand.inlineCodeFill)
             }

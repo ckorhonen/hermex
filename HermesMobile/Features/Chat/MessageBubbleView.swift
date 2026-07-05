@@ -384,6 +384,8 @@ struct MessageBubbleView: View {
     }
 
     private var chatBodyPointSize: CGFloat {
+        // Preserve Dynamic Type via @ScaledMetric, then layer the user's chat-specific
+        // preference on top so the app setting never replaces accessibility scaling.
         scaledBodyPointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
     }
 
