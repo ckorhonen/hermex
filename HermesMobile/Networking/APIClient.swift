@@ -262,6 +262,53 @@ actor APIClient {
         return data
     }
 
+    /// Streaming variant of `downloadData`: bytes land in a file via
+    /// URLSession's download machinery instead of one in-memory `Data` —
+    /// transcript videos can run to hundreds of MB, where buffering risks a
+    /// jetsam kill right before AVKit allocates decode buffers. Moves the
+    /// finished download to `destination` before returning. Same header rules
+    /// as `downloadData` (#255): custom headers only for same-origin requests.
+    func downloadFile(
+        from url: URL,
+        to destination: URL,
+        using session: URLSession,
+        mapsUnauthorized: Bool
+    ) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        if Self.isSameOrigin(url, as: baseURL) {
+            customHeaderProvider().apply(to: &request)
+        }
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+
+        let downloadedURL: URL
+        let response: URLResponse
+        do {
+            (downloadedURL, response) = try await session.download(for: request)
+        } catch {
+            throw APIError.network(underlying: error)
+        }
+
+        do {
+            // Failure bodies are small (error JSON/text); read them only on
+            // the non-2xx path so validate can surface the server's message.
+            if let httpResponse = response as? HTTPURLResponse,
+               !(200...299).contains(httpResponse.statusCode) {
+                let body = (try? Data(contentsOf: downloadedURL)) ?? Data()
+                try validate(response, data: body, mapsUnauthorized: mapsUnauthorized)
+            } else {
+                try validate(response, data: Data(), mapsUnauthorized: mapsUnauthorized)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: downloadedURL)
+            throw error
+        }
+
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: downloadedURL, to: destination)
+    }
+
     static func isSameOrigin(_ url: URL, as baseURL: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased(),
               let baseScheme = baseURL.scheme?.lowercased(),

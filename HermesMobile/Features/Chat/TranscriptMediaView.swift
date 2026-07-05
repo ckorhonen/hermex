@@ -142,23 +142,25 @@ private struct TranscriptMediaThumbnailView: View {
     }
 }
 
-private struct TranscriptMediaDocumentChip: View {
-    let reference: TranscriptMediaReference
+private struct TranscriptMediaChipShell: View {
+    let iconName: String
+    let title: String
+    let subtitle: String
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc.text")
+            Image(systemName: iconName)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(ZoraBrand.secondaryForeground)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
+                Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(ZoraBrand.foreground)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                Text("Open file")
+                Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(ZoraBrand.secondaryForeground)
                     .lineLimit(1)
@@ -176,36 +178,26 @@ private struct TranscriptMediaDocumentChip: View {
     }
 }
 
+private struct TranscriptMediaDocumentChip: View {
+    let reference: TranscriptMediaReference
+
+    var body: some View {
+        TranscriptMediaChipShell(
+            iconName: "doc.text",
+            title: reference.displayName,
+            subtitle: String(localized: "Open file")
+        )
+    }
+}
+
 private struct TranscriptMediaVideoChip: View {
     let reference: TranscriptMediaReference
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "play.rectangle")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(ZoraBrand.secondaryForeground)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(ZoraBrand.foreground)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text("Play video")
-                    .font(.caption2)
-                    .foregroundStyle(ZoraBrand.secondaryForeground)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 240, alignment: .leading)
-        .background(ZoraBrand.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
+        TranscriptMediaChipShell(
+            iconName: "play.rectangle",
+            title: reference.displayName,
+            subtitle: String(localized: "Play video")
         )
     }
 }
@@ -234,32 +226,10 @@ private struct TranscriptMediaUnavailableChip: View {
     let reference: TranscriptMediaReference
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: iconName)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(ZoraBrand.secondaryForeground)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(ZoraBrand.foreground)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text("Media unavailable")
-                    .font(.caption2)
-                    .foregroundStyle(ZoraBrand.secondaryForeground)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 240, alignment: .leading)
-        .background(ZoraBrand.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
+        TranscriptMediaChipShell(
+            iconName: iconName,
+            title: reference.displayName,
+            subtitle: String(localized: "Media unavailable")
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Media unavailable \(reference.displayName)"))

@@ -197,6 +197,30 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: secondURL.path))
     }
 
+    /// Dropping the last reference to the view model must remove the temp
+    /// video file (the sheet was dismissed; nothing else owns the file).
+    @MainActor
+    func testDeinitRemovesTemporaryVideoFile() async throws {
+        let client = makeClient { request in
+            self.response(statusCode: 200, data: Data("fake-video-bytes".utf8), for: request)
+        }
+        var viewModel: TranscriptMediaPreviewViewModel? = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            reference: .init(rawReference: "/tmp/deinit-check.mp4"),
+            apiClient: client
+        )
+        await viewModel?.load()
+        let fileURL = try XCTUnwrap(viewModel?.videoFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+
+        viewModel = nil
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fileURL.path),
+            "Deinit must clean up the temporary video file"
+        )
+    }
+
     func testUnsupportedMediaSetsUnavailableStateWithoutRequest() async {
         let recorder = TranscriptMediaPreviewRequestRecorder()
         let client = makeClient { request in
@@ -356,4 +380,5 @@ private final class TranscriptMediaPreviewMockURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+
 }

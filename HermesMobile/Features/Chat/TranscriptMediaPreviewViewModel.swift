@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftUI
 
 @MainActor
@@ -17,13 +18,14 @@ final class TranscriptMediaPreviewViewModel {
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
 
-    /// Mirror of `videoFileURL` that `deinit` (nonisolated) can read; only
-    /// mutated on the main actor alongside `videoFileURL`.
-    @ObservationIgnored nonisolated(unsafe) private var temporaryVideoFileURLForCleanup: URL?
+    /// Mirror of `videoFileURL` that `deinit` (nonisolated) can read. A lock —
+    /// not `nonisolated(unsafe)` — so a future capture of this view model by
+    /// non-main-actor code can't silently turn the deinit read into a race.
+    @ObservationIgnored private let temporaryVideoFileURLForCleanup = OSAllocatedUnfairLock<URL?>(initialState: nil)
 
     deinit {
-        if let temporaryVideoFileURLForCleanup {
-            try? FileManager.default.removeItem(at: temporaryVideoFileURLForCleanup)
+        if let url = temporaryVideoFileURLForCleanup.withLock({ $0 }) {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -59,6 +61,16 @@ final class TranscriptMediaPreviewViewModel {
         }
 
         do {
+            if reference.isVideoCandidate {
+                let fileURL = Self.temporaryVideoFileDestination(for: reference)
+                try await apiClient.downloadTranscriptMedia(for: reference, to: fileURL)
+                videoFileURL = fileURL
+                temporaryVideoFileURLForCleanup.withLock { $0 = fileURL }
+                let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+                originalByteCount = (attributes?[.size] as? NSNumber)?.intValue
+                return
+            }
+
             let data = try await apiClient.transcriptMediaData(for: reference)
             originalData = data
             originalByteCount = data.count
@@ -71,10 +83,6 @@ final class TranscriptMediaPreviewViewModel {
                 } else {
                     errorMessage = String(localized: "Could not decode this image.")
                 }
-            } else if reference.isVideoCandidate {
-                let fileURL = try Self.writeTemporaryVideoFile(data, for: reference)
-                videoFileURL = fileURL
-                temporaryVideoFileURLForCleanup = fileURL
             } else if let decodedText = Self.decodedText(from: data) {
                 textContent = decodedText
             } else {
@@ -101,22 +109,20 @@ final class TranscriptMediaPreviewViewModel {
         guard let videoFileURL else { return }
         try? FileManager.default.removeItem(at: videoFileURL)
         self.videoFileURL = nil
-        temporaryVideoFileURLForCleanup = nil
+        temporaryVideoFileURLForCleanup.withLock { $0 = nil }
     }
 
-    /// AVPlayer needs a file (or streamable) URL rather than raw bytes, so the
-    /// fetched data is written to a uniquely named temp file. The file is
-    /// removed on reload and deinit; the OS also purges the temp directory.
-    private static func writeTemporaryVideoFile(
-        _ data: Data,
+    /// AVPlayer needs a file URL rather than raw bytes, so the download is
+    /// streamed to a uniquely named temp file. The file is removed on reload
+    /// and deinit; the OS also purges the temp directory. The "mp4" fallback
+    /// is defensive only — video candidates always carry a known extension.
+    private static func temporaryVideoFileDestination(
         for reference: TranscriptMediaReference
-    ) throws -> URL {
+    ) -> URL {
         let ext = reference.pathExtension
-        let url = FileManager.default.temporaryDirectory
+        return FileManager.default.temporaryDirectory
             .appendingPathComponent("transcript-media-\(UUID().uuidString)")
             .appendingPathExtension(ext.isEmpty ? "mp4" : ext)
-        try data.write(to: url, options: .atomic)
-        return url
     }
 
     private static func decodedText(from data: Data) -> String? {
