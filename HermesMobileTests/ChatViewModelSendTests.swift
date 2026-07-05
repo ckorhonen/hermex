@@ -1944,7 +1944,10 @@ final class ChatViewModelSendTests: XCTestCase {
     func testActiveStreamStatusRefreshWaitsForFinalTranscriptBeforeStoppingStream() async throws {
         let streamClient = SpySSEStreamingClient()
         var sessionReloadCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+        // Inert polling: on a starved CI runner this test's awaits can take
+        // whole seconds of wall clock, letting real-time pollers fire mid-test
+        // and add session reloads the checkpoints don't expect (PR #41 flake).
+        let viewModel = try makeViewModel(streamClient: streamClient, pollingIntervals: .testInert) { request in
             switch request.url?.path {
             case "/api/chat/start":
                 return apiTestJSONResponse("""
@@ -2037,7 +2040,8 @@ final class ChatViewModelSendTests: XCTestCase {
     func testActiveStreamStatusRefreshTreatsToolOnlyAssistantAsCompletedResponse() {
         runMainActorTest {
             let streamClient = SpySSEStreamingClient()
-            let viewModel = try self.makeViewModel(streamClient: streamClient) { request in
+            // Inert polling: see the note on the waits-for-final-transcript test.
+            let viewModel = try self.makeViewModel(streamClient: streamClient, pollingIntervals: .testInert) { request in
                 switch request.url?.path {
                 case "/api/chat/start":
                     return apiTestJSONResponse("""
@@ -6458,6 +6462,10 @@ final class ChatViewModelSendTests: XCTestCase {
         await Task { @MainActor in }.value
     }
 
+    // Wall-clock-inert polling for tests whose awaits can take seconds on a
+    // starved CI runner: real-time pollers must not fire mid-test.
+    // (PR #41 CI flake: extra session reloads between checkpoints.)
+
     @MainActor
     private func makeViewModel(
         streamClient: SSEStreamingClient? = nil,
@@ -6522,7 +6530,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     private func runMainActorTest(
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval = 30,
         _ body: @escaping @MainActor () async throws -> Void
     ) {
         let expectation = expectation(description: "MainActor async test")
@@ -6779,4 +6787,14 @@ private final class SpySSEStreamingClient: SSEStreamingClient {
             flushPendingStreamingContent?()
         }
     }
+}
+
+/// One-hour intervals: long enough that no real-time poller can fire within
+/// any plausible starved-CI test duration, without changing poller code paths.
+private extension ChatPollingIntervals {
+    static let testInert = ChatPollingIntervals(
+        approvalNanoseconds: 3_600_000_000_000,
+        clarificationNanoseconds: 3_600_000_000_000,
+        backgroundNanoseconds: 3_600_000_000_000
+    )
 }
