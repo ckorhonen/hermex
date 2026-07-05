@@ -1025,7 +1025,7 @@ struct ChatView: View {
             cacheFirstReconcileScrollToken: viewModel.cacheFirstReconcileScrollToken,
             bottomAnchorID: bottomAnchorID,
             transcriptMessageSpacing: ChatTranscriptSpacing.scaled(transcriptMessageSpacing, fontScale: effectiveChatFontScale),
-            transcriptBlockSpacing: ChatTranscriptSpacing.scaled(transcriptBlockSpacing, fontScale: effectiveChatFontScale),
+            transcriptBlockSpacing: transcriptBlockSpacing,
             transcriptBottomInsetHeight: transcriptBottomInsetHeight,
             scrollToBottomButtonBottomPadding: scrollToBottomButtonBottomPadding,
             localAttachmentPreviews: viewModel.localAttachmentPreviews,
