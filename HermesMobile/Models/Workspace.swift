@@ -64,13 +64,13 @@ struct WorkspaceEntry: Decodable, Equatable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decodeIfPresent(String.self, forKey: .name)
-        path = try container.decodeIfPresent(String.self, forKey: .path)
-        type = try container.decodeIfPresent(String.self, forKey: .type)
-        size = try container.decodeIfPresent(Int.self, forKey: .size)
-        modified = try container.decodeIfPresent(Double.self, forKey: .modified)
-        isDirectory = try container.decodeIfPresent(Bool.self, forKey: .isDirectory)
-            ?? container.decodeIfPresent(Bool.self, forKey: .isDir)
+        name = container.decodeLossyStringIfPresent(forKey: .name)
+        path = container.decodeLossyStringIfPresent(forKey: .path)
+        type = container.decodeLossyStringIfPresent(forKey: .type)
+        size = container.decodeLossyIntIfPresent(forKey: .size)
+        modified = container.decodeLossyDoubleIfPresent(forKey: .modified)
+        isDirectory = container.decodeLossyBoolIfPresent(forKey: .isDirectory)
+            ?? container.decodeLossyBoolIfPresent(forKey: .isDir)
     }
 }
 

@@ -106,6 +106,26 @@ final class LossyNumericDecodingTests: XCTestCase {
         XCTAssertEqual(summary.estimatedCost, 0.05)
     }
 
+    /// One directory entry with a drifted numeric field must not fail the
+    /// whole listing (array element decode failures propagate, not skip).
+    func testWorkspaceEntryToleratesDriftedNumericFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let json = #"""
+        [
+            {"name": "big.bin", "path": "/w/big.bin", "size": 1.5, "modified": "1751234567.5", "is_directory": false},
+            {"name": "src", "path": "/w/src", "type": "dir", "is_directory": true}
+        ]
+        """#
+
+        let entries = try decoder.decode([WorkspaceEntry].self, from: Data(json.utf8))
+
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries[0].size, 1)
+        XCTAssertEqual(entries[0].modified ?? 0, 1_751_234_567.5, accuracy: 0.001)
+        XCTAssertTrue(entries[1].isBrowsableDirectory)
+    }
+
     // MARK: - Duration formatting from server-supplied seconds
 
     func testClarificationDurationTextToleratesOversizedTimeout() {

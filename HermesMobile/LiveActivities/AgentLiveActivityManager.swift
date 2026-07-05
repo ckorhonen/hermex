@@ -647,20 +647,20 @@ enum LiveActivityReconciler {
         )
     }
 
-    /// Whether an orphan belongs to `server`. Orphans persisted before the
-    /// server was recorded (`serverURLString == nil`) are treated as the active
-    /// server's, preserving single-server behavior.
+    /// Whether an orphan belongs to `server`, by origin (scheme + host +
+    /// normalized default port, via `APIClient.isSameOrigin`). Orphans
+    /// persisted before the server was recorded — or with an unusable
+    /// recorded value — are treated as the active server's, preserving
+    /// single-server behavior.
     static func orphanBelongsToServer(_ orphan: OrphanedLiveActivity, server: URL) -> Bool {
-        guard let recorded = orphan.serverURLString else { return true }
-        return normalizedServerKey(recorded) == normalizedServerKey(server.absoluteString)
-    }
-
-    private static func normalizedServerKey(_ raw: String) -> String {
-        var key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while key.hasSuffix("/") {
-            key.removeLast()
+        guard let recorded = orphan.serverURLString,
+              let recordedURL = URL(string: recorded),
+              recordedURL.host != nil
+        else {
+            return true
         }
-        return key
+
+        return APIClient.isSameOrigin(recordedURL, as: server)
     }
 
     /// Testable core. For each orphaned stream, fetch its server status; only a

@@ -901,6 +901,12 @@ final class LiveActivityTests: XCTestCase {
                 serverURLString: "https://server-b.example/"
             ),
             OrphanedLiveActivity(
+                streamID: "explicit-port-stream",
+                sessionID: "s-port",
+                updatedAt: now,
+                serverURLString: "https://server-b.example:443"
+            ),
+            OrphanedLiveActivity(
                 streamID: "legacy-stream",
                 sessionID: "s-legacy",
                 updatedAt: now,
@@ -917,7 +923,11 @@ final class LiveActivityTests: XCTestCase {
             streamStatus: { _ in self.statusResponse(active: false) }
         )
 
-        XCTAssertEqual(manager.endedStreamIDs, ["active-server-stream", "legacy-stream"])
+        XCTAssertEqual(
+            manager.endedStreamIDs,
+            ["active-server-stream", "explicit-port-stream", "legacy-stream"],
+            "An explicit default port is the same origin, not another server"
+        )
     }
 
     private func statusResponse(active: Bool, terminalState: String? = nil) -> ChatStreamStatusResponse {
