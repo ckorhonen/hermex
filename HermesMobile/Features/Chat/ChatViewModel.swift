@@ -4566,6 +4566,15 @@ struct TranscriptMessage: Identifiable, Equatable {
     let message: ChatMessage
 
     var id: String { renderID }
+
+    /// Identity that scopes bubble-local view state (`.id()` on the bubble):
+    /// the streaming fade/linger machinery lives in that subtree, so this must
+    /// stay stable when the server swaps the streaming placeholder's
+    /// `messageId` for the final one — otherwise the bubble remounts and the
+    /// in-flight fade snaps at the exact moment every response completes.
+    /// `renderID` is the identity with that stability guarantee (see
+    /// `testTranscriptMessagesKeepRenderIDStableWhenServerReplacesStreamingAssistantID`).
+    var bubbleStateID: String { renderID }
 }
 
 /// Display model for the synthesized "Context compaction · Reference only" card.

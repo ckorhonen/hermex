@@ -87,6 +87,29 @@ final class TranscriptMessageTests: XCTestCase {
         XCTAssertEqual(completedTranscriptMessages.map(\.anchorID), ["u1", "assistant-1"])
     }
 
+    /// The bubble's `.id()` scopes the streaming fade/linger view state. If it
+    /// changes when the server replaces the placeholder `stream-*` id with the
+    /// final message id, the bubble remounts mid-animation and the text snaps.
+    func testTranscriptMessagesKeepBubbleStateIDStableWhenServerReplacesStreamingAssistantID() {
+        let streamingMessages = [
+            ChatMessage(role: "user", content: "Finish the summary", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "Working summary", timestamp: 2, messageId: "stream-1")
+        ]
+        let completedMessages = [
+            ChatMessage(role: "user", content: "Finish the summary", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "Final summary", timestamp: 2, messageId: "assistant-1")
+        ]
+
+        let streamingTranscriptMessages = ChatViewModel.transcriptMessages(from: streamingMessages)
+        let completedTranscriptMessages = ChatViewModel.transcriptMessages(from: completedMessages)
+
+        XCTAssertEqual(
+            streamingTranscriptMessages.map(\.bubbleStateID),
+            completedTranscriptMessages.map(\.bubbleStateID),
+            "Bubble-local state identity must survive the streaming placeholder → final message swap"
+        )
+    }
+
     func testTranscriptMessagesUseRawAnchorForNilMessageIDsIndependentOfContent() {
         let initialMessages = [
             ChatMessage(role: "user", content: "Hello", timestamp: 1, messageId: nil),

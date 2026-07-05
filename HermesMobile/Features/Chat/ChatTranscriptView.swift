@@ -567,7 +567,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             if shouldRenderMessageRow(transcriptMessage.message) {
                 ChatTranscriptMessageRow(
                     message: transcriptMessage.message,
-                    rowStateID: transcriptMessage.message.id,
+                    rowStateID: transcriptMessage.bubbleStateID,
                     visibleIndex: transcriptMessage.loadedIndex,
                     actionContext: actionContext(transcriptMessage.message, transcriptMessage.loadedIndex),
                     localAttachmentPreviews: localAttachmentPreviews,
