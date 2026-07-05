@@ -4,6 +4,8 @@ import UIKit
 
 @MainActor
 struct SessionListView: View {
+    private static let activeSessionMonitorCandidateLimit = 10
+
     private static let searchChromeIconVisualSize: CGFloat = 36
     private static let searchChromeIconHitTarget: CGFloat = 44
 
@@ -675,11 +677,12 @@ struct SessionListView: View {
     }
 
     private var activeSessionMonitorTaskID: ActiveSessionMonitorTaskID {
-        let activeSessions = visibleSessions.filter(SessionRowView.isActiveStreaming)
+        let monitoredSessions = Array(visibleSessions.prefix(Self.activeSessionMonitorCandidateLimit))
+        let activeSessions = monitoredSessions.filter(SessionRowView.isActiveStreaming)
         return ActiveSessionMonitorTaskID(
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
-            sessionIDs: SessionListViewModel.monitorSessionIDs(in: activeSessions),
-            hasTrackedRows: !activeSessions.isEmpty,
+            sessionIDs: SessionListViewModel.monitorSessionIDs(in: monitoredSessions),
+            hasTrackedRows: !monitoredSessions.isEmpty,
             isViewingCachedData: viewModel.isViewingCachedData
         )
     }
@@ -836,8 +839,17 @@ struct SessionListView: View {
 
     private func markCompletedSessionsUnread(_ sessionIDs: Set<String>) {
         guard !sessionIDs.isEmpty else { return }
-        let openSessionIDs = Set([selectedDetailSession?.id, createdSession?.id].compactMap { $0 })
-        unreadCompletedSessionIDs.formUnion(sessionIDs.subtracting(openSessionIDs))
+        unreadCompletedSessionIDs.formUnion(
+            SessionUnreadCompletionPolicy.unreadSessionIDs(
+                from: sessionIDs,
+                visibleSessionID: visibleDetailSessionID
+            )
+        )
+    }
+
+    private var visibleDetailSessionID: String? {
+        guard pendingNewChat == nil, selectedUtilityDestination == nil else { return nil }
+        return usesSplitNavigation ? selectedDetailSession?.id : createdSession?.id
     }
 
     @MainActor
@@ -1328,6 +1340,13 @@ private struct ActiveSessionMonitorTaskID: Hashable {
     let sessionIDs: [String]
     let hasTrackedRows: Bool
     let isViewingCachedData: Bool
+}
+
+enum SessionUnreadCompletionPolicy {
+    static func unreadSessionIDs(from completedSessionIDs: Set<String>, visibleSessionID: String?) -> Set<String> {
+        guard let visibleSessionID else { return completedSessionIDs }
+        return completedSessionIDs.subtracting([visibleSessionID])
+    }
 }
 
 private struct PendingNewChatView: View {

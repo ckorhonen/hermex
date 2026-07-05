@@ -313,8 +313,8 @@ final class SessionListViewModel {
 
     /// True after the degenerate monitor state — rows flagged `is_streaming` with no
     /// `active_stream_id` to poll — has already triggered its one reload. Without this,
-    /// the 1 Hz active-row monitor would re-fetch the whole session list every second
-    /// while such a session exists.
+    /// the periodic active-row monitor would re-fetch the whole session list on every
+    /// tick while such a session exists.
     private var didReloadForStreamlessActiveSessions = false
 
     @discardableResult
@@ -334,14 +334,12 @@ final class SessionListViewModel {
 
         guard !streamIDs.isEmpty else {
             if !monitoredSessionIDs.isEmpty {
-                // A monitored row can be active via `is_streaming` before the server
-                // provides an `active_stream_id`. Give that state one reload chance per
-                // transition, matching the unmonitored fallback below, instead of reloading
-                // the list on every monitor tick.
-                guard !didReloadForStreamlessActiveSessions else { return .unchanged }
-                didReloadForStreamlessActiveSessions = true
-                return await reloadTrackedSessionStates(
+                return await refreshMonitoredSessionStatuses(
                     monitoredSessionIDs: monitoredSessionIDs,
+                    reloadsInactiveStreamlessRows: Self.hasStreamlessActiveSession(
+                        in: sessions,
+                        matching: monitoredSessionIDs
+                    ),
                     modelContext: modelContext
                 )
             }
@@ -396,7 +394,46 @@ final class SessionListViewModel {
         return .reloaded
     }
 
+    private func refreshMonitoredSessionStatuses(
+        monitoredSessionIDs: Set<String>,
+        reloadsInactiveStreamlessRows: Bool,
+        modelContext: ModelContext?
+    ) async -> ActiveSessionStateRefreshResult {
+        for sessionID in monitoredSessionIDs.sorted() {
+            do {
+                let status = try await client.sessionStatus(id: sessionID)
+                guard Self.isActiveStatus(status) else { continue }
+                didReloadForStreamlessActiveSessions = false
+                return await reloadTrackedSessionStates(
+                    monitoredSessionIDs: monitoredSessionIDs,
+                    modelContext: modelContext
+                )
+            } catch {
+                guard !error.isCancellation else { return .unchanged }
+                if case APIError.unauthorized = error {
+                    lastError = error
+                    return .failed
+                }
+                continue
+            }
+        }
+
+        guard reloadsInactiveStreamlessRows else { return .unchanged }
+
+        // A row can be locally marked `is_streaming` before the server exposes a
+        // live stream ID. If direct status says none of the monitored sessions is
+        // active, reload once per such transition to clear the stale local flag.
+        guard !didReloadForStreamlessActiveSessions else { return .unchanged }
+        didReloadForStreamlessActiveSessions = true
+        return await reloadTrackedSessionStates(
+            monitoredSessionIDs: monitoredSessionIDs,
+            modelContext: modelContext
+        )
+    }
+
     private func updateTrackedActiveSessions(monitoredSessionIDs: Set<String>) {
+        recentlyCompletedSessionIDs.removeAll()
+
         let currentActiveSessionIDs = Self.activeSessionIDs(in: sessions, matching: monitoredSessionIDs)
         let completedSessionIDs = trackedActiveSessionIDs
             .intersection(monitoredSessionIDs)
@@ -962,6 +999,21 @@ final class SessionListViewModel {
 
     private static func isActiveSession(_ session: SessionSummary) -> Bool {
         session.isStreaming == true || nonEmpty(session.activeStreamId) != nil
+    }
+
+    private static func hasStreamlessActiveSession(
+        in sessions: [SessionSummary],
+        matching monitoredSessionIDs: Set<String>
+    ) -> Bool {
+        sessions.contains { session in
+            monitoredSessionIDs.contains(session.id)
+                && session.isStreaming == true
+                && nonEmpty(session.activeStreamId) == nil
+        }
+    }
+
+    private static func isActiveStatus(_ status: SessionStatusResponse) -> Bool {
+        status.agentRunning == true || nonEmpty(status.activeStreamId) != nil || status.isStreaming == true
     }
 
     private static func normalizedStreamIDs(_ rawStreamIDs: [String]) -> [String] {

@@ -65,6 +65,14 @@ struct SessionRowView: View {
         session.isCronSession
     }
 
+    static func activityIndicatorKind(isActive: Bool, showsUnreadCompletion: Bool) -> SessionActivityIndicatorKind {
+        if isActive {
+            return .active
+        }
+
+        return showsUnreadCompletion ? .unreadCompletion : .hidden
+    }
+
     static func metadataLabel(
         for session: SessionSummary,
         showsMessageCount: Bool,
@@ -473,11 +481,18 @@ private struct SessionActivityIndicator: View {
     }
 
     private var isVisible: Bool {
-        isActive || showsUnreadCompletion
+        indicatorKind != .hidden
     }
 
     private var dotColor: Color {
-        isActive ? .green : .yellow
+        indicatorKind.dotColor
+    }
+
+    private var indicatorKind: SessionActivityIndicatorKind {
+        SessionRowView.activityIndicatorKind(
+            isActive: isActive,
+            showsUnreadCompletion: showsUnreadCompletion
+        )
     }
 
     private func updateAnimation() {
@@ -489,6 +504,21 @@ private struct SessionActivityIndicator: View {
         isExpanded = false
         withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
             isExpanded = true
+        }
+    }
+}
+
+enum SessionActivityIndicatorKind: Equatable {
+    case hidden
+    case active
+    case unreadCompletion
+
+    var dotColor: Color {
+        switch self {
+        case .hidden, .unreadCompletion:
+            return .yellow
+        case .active:
+            return .green
         }
     }
 }

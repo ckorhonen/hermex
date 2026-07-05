@@ -141,6 +141,40 @@ final class SessionIdentityTests: XCTestCase {
         )
     }
 
+
+
+    func testSessionRowActivityIndicatorGivesActiveStatePrecedenceOverUnreadCompletion() {
+        XCTAssertEqual(
+            SessionRowView.activityIndicatorKind(isActive: true, showsUnreadCompletion: true),
+            .active
+        )
+        XCTAssertEqual(
+            SessionRowView.activityIndicatorKind(isActive: false, showsUnreadCompletion: true),
+            .unreadCompletion
+        )
+        XCTAssertEqual(
+            SessionRowView.activityIndicatorKind(isActive: false, showsUnreadCompletion: false),
+            .hidden
+        )
+    }
+
+    func testUnreadCompletionPolicySuppressesOnlyVisibleSession() {
+        XCTAssertEqual(
+            SessionUnreadCompletionPolicy.unreadSessionIDs(
+                from: ["visible", "background"],
+                visibleSessionID: "visible"
+            ),
+            ["background"]
+        )
+        XCTAssertEqual(
+            SessionUnreadCompletionPolicy.unreadSessionIDs(
+                from: ["visible", "background"],
+                visibleSessionID: nil
+            ),
+            ["visible", "background"]
+        )
+    }
+
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

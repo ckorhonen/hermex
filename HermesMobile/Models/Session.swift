@@ -133,6 +133,7 @@ struct SessionStatusResponse: Decodable, Equatable {
     let sessionId: String?
     let activeStreamId: String?
     let isStreaming: Bool?
+    let agentRunning: Bool?
     let pendingUserMessage: String?
     let error: String?
 }
