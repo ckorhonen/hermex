@@ -25,11 +25,19 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   changes, keep the diff to iOS app/docs/tests, verify any API shape against upstream or
   a running server, and call out in the PR that no server/Worker/signing/App Store Connect
   or infra deploy is required. If that scope changes, say so before pushing/releasing.
-- Pushing a branch, opening/updating a PR, or merging needs explicit human approval.
-  Default all GitHub work to the fork remote (`origin`, currently `ckorhonen/hermex`).
-  Never open an upstream PR, push to `upstream`, merge from/to `upstream`, or retarget a
-  PR at the upstream repository unless the human explicitly asks for upstream work in
-  that turn. Triage bot/review comments before accepting them.
+- All code/docs changes should go through a PR on the fork remote (`origin`, currently
+  `ckorhonen/hermex`) unless the human explicitly says not to. After local validation,
+  push the branch, open/update the PR, run an independent autoreview, fix any accepted
+  findings, monitor CI, fix CI failures, and iterate until all CI checks and code review
+  comments are resolved. You may use subagents/worktrees for review, CI triage, and
+  follow-up fixes to save context, but the foreground agent remains responsible for
+  verifying diffs, tests, comments, and final status.
+- Once the PR is green and all review feedback is resolved, merge it without asking for
+  another approval, delete the remote branch when possible, and report the merge SHA.
+  Default all GitHub work to the fork remote. Never open an upstream PR, push to
+  `upstream`, merge from/to `upstream`, or retarget a PR at the upstream repository
+  unless the human explicitly asks for upstream work in that turn. Triage bot/review
+  comments before accepting them.
 
 ## Hard rules
 1. **Never invent API endpoints or JSON shapes.** Read the pinned upstream copy at

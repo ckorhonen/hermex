@@ -7,6 +7,21 @@ enum ChatTranscriptSpacing {
     static let markdownBlock: CGFloat = 6
     static let markdownRichBlock: CGFloat = 10
     static let contentTopInset: CGFloat = 14
+
+    static func scaled(_ value: CGFloat, fontScale: Double) -> CGFloat {
+        ChatTranscriptDisplaySettings.scaledLayoutValue(value, fontScale: fontScale)
+    }
+}
+
+private struct ChatTranscriptFontScaleKey: EnvironmentKey {
+    static let defaultValue = ChatTranscriptDisplaySettings.defaultFontScale
+}
+
+extension EnvironmentValues {
+    var chatTranscriptFontScale: Double {
+        get { self[ChatTranscriptFontScaleKey.self] }
+        set { self[ChatTranscriptFontScaleKey.self] = ChatTranscriptDisplaySettings.clampedFontScale(newValue) }
+    }
 }
 
 struct ChatTranscriptView: View {
@@ -40,6 +55,7 @@ struct ChatTranscriptView: View {
     let latestTranscriptMessageRole: String?
     let isScrolledNearBottom: Bool
     let activeStreamID: String?
+    let chatFontScale: Double
     let streamingScrollTrigger: Int
     let cacheFirstReconcileScrollToken: Int
     let bottomAnchorID: String
@@ -240,6 +256,7 @@ struct ChatTranscriptView: View {
                     listeningMessageID: listeningMessageID,
                     isViewingCachedData: isViewingCachedData,
                     hasActiveStream: activeStreamID != nil,
+                    chatFontScale: chatFontScale,
                     isRegeneratingMessage: isRegeneratingMessage,
                     isEditingMessage: isEditingMessage,
                     isForkingMessage: isForkingMessage,
@@ -279,11 +296,12 @@ struct ChatTranscriptView: View {
                 .id(bottomAnchorID)
                 .allowsHitTesting(false)
         }
-        .padding(.top, ChatTranscriptSpacing.contentTopInset)
+        .padding(.top, ChatTranscriptSpacing.scaled(ChatTranscriptSpacing.contentTopInset, fontScale: chatFontScale))
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
         .frame(width: viewportWidth, alignment: transcriptFrameAlignment)
         .clipped()
+        .environment(\.chatTranscriptFontScale, chatFontScale)
         .background {
             ZStack {
                 ChatScrollObserver(isStreaming: activeStreamID != nil) { metrics in
@@ -494,6 +512,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let listeningMessageID: String?
     let isViewingCachedData: Bool
     let hasActiveStream: Bool
+    let chatFontScale: Double
     let isRegeneratingMessage: Bool
     let isEditingMessage: Bool
     let isForkingMessage: Bool
@@ -532,13 +551,14 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.listeningMessageID == rhs.listeningMessageID &&
             lhs.isViewingCachedData == rhs.isViewingCachedData &&
             lhs.hasActiveStream == rhs.hasActiveStream &&
+            lhs.chatFontScale == rhs.chatFontScale &&
             lhs.isRegeneratingMessage == rhs.isRegeneratingMessage &&
             lhs.isEditingMessage == rhs.isEditingMessage &&
             lhs.isForkingMessage == rhs.isForkingMessage
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
+        VStack(alignment: .leading, spacing: ChatTranscriptSpacing.scaled(transcriptBlockSpacing, fontScale: chatFontScale)) {
             reasoningBlocks
             liveReasoningBlock
             toolActivityGroups
@@ -554,6 +574,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     listeningMessageID: listeningMessageID,
                     isViewingCachedData: isViewingCachedData,
                     hasActiveStream: hasActiveStream,
+                    chatFontScale: chatFontScale,
                     isStreaming: ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
                         hasActiveStream: hasActiveStream,
                         messageRole: transcriptMessage.message.role,
@@ -641,6 +662,7 @@ private struct ChatTranscriptMessageRow: View {
     let listeningMessageID: String?
     let isViewingCachedData: Bool
     let hasActiveStream: Bool
+    let chatFontScale: Double
     let isStreaming: Bool
     let isRegeneratingMessage: Bool
     let isEditingMessage: Bool

@@ -9,10 +9,10 @@ struct MessageBubbleView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
-    @AppStorage(ChatTranscriptDisplaySettings.fontScaleKey) private var chatFontScale = ChatTranscriptDisplaySettings.defaultFontScale
     @ScaledMetric(relativeTo: .body) private var scaledBodyPointSize: CGFloat = 17
 
     let message: ChatMessage
+    let chatFontScale: Double
     let loadAttachmentImage: ((String) async -> Data?)?
     let loadAttachmentData: ((String) async -> Data?)?
     let loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)?
@@ -24,8 +24,11 @@ struct MessageBubbleView: View {
 
     @State private var isUserBubbleExpanded = false
 
+    /// Stores a clamped transcript font scale so all row-local font and spacing
+    /// math uses the same bounded value as the transcript environment.
     init(
         message: ChatMessage,
+        chatFontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale,
         loadAttachmentImage: ((String) async -> Data?)? = nil,
         loadAttachmentData: ((String) async -> Data?)? = nil,
         loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)? = nil,
@@ -36,6 +39,7 @@ struct MessageBubbleView: View {
         isStreaming: Bool = false
     ) {
         self.message = message
+        self.chatFontScale = ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
         self.loadAttachmentImage = loadAttachmentImage
         self.loadAttachmentData = loadAttachmentData
         self.loadTranscriptMediaData = loadTranscriptMediaData
@@ -59,7 +63,7 @@ struct MessageBubbleView: View {
     }
 
     private var userMessageRow: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .trailing, spacing: scaledTranscriptSpacing(8)) {
             if let attachments = message.attachments, !attachments.isEmpty {
                 attachmentPreviews
             }
@@ -70,7 +74,7 @@ struct MessageBubbleView: View {
             if hasVisibleUserBubbleText || hasLinkPreview {
                 HStack(alignment: .bottom, spacing: 0) {
                     Spacer(minLength: userBubbleLeadingGutter)
-                    VStack(alignment: .trailing, spacing: 8) {
+                    VStack(alignment: .trailing, spacing: scaledTranscriptSpacing(8)) {
                         if hasVisibleUserBubbleText {
                             userBubble
                         }
@@ -80,13 +84,13 @@ struct MessageBubbleView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.vertical, 2)
+        .padding(.vertical, scaledTranscriptSpacing(2))
     }
 
     private var assistantMessageRow: some View {
         let segments = TranscriptMediaParser.segments(in: messageText)
 
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: scaledTranscriptSpacing(6)) {
             if showsAssistantTurnHeaderForThisMessage {
                 assistantTurnHeader
             }
@@ -105,14 +109,17 @@ struct MessageBubbleView: View {
             linkPreview
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 2)
-        // While this row is the active streaming message, animate its height
-        // growth at the same curve as the bottom-follow scroll so the streaming
-        // edge stays visually stationary instead of stepping per word flush.
-        .animation(
-            isStreaming ? ChatMotion.streamingFollow(reduceMotion: reduceMotion) : nil,
-            value: messageText
-        )
+        .padding(.vertical, scaledTranscriptSpacing(2))
+        // Paragraph and block geometry must be correct on the first streamed
+        // frame. Animating every token's Markdown layout makes a new paragraph
+        // interpolate from zero gap, so the first glyphs look glued to the
+        // previous paragraph until SwiftUI settles the layout. Keep scroll
+        // following and glyph fade animated, but make the active text row's
+        // own implicit layout animation immediate.
+        .transaction { transaction in
+            guard isStreaming else { return }
+            transaction.animation = nil
+        }
     }
 
     // MARK: - Assistant turn header (issue #258)
@@ -291,7 +298,7 @@ struct MessageBubbleView: View {
         spacing: CGFloat,
         width: CGFloat
     ) -> some View {
-        VStack(alignment: .trailing, spacing: spacing) {
+        VStack(alignment: .trailing, spacing: scaledTranscriptSpacing(spacing)) {
             ForEach(0..<rowCount(items: items, columns: columns), id: \.self) { row in
                 HStack(spacing: spacing) {
                     let start = row * columns
@@ -381,6 +388,10 @@ struct MessageBubbleView: View {
 
     private var userBubbleBorder: Color {
         ZoraBrand.chatBubbleStroke
+    }
+
+    private func scaledTranscriptSpacing(_ value: CGFloat) -> CGFloat {
+        ChatTranscriptSpacing.scaled(value, fontScale: chatFontScale)
     }
 
     private var chatBodyPointSize: CGFloat {

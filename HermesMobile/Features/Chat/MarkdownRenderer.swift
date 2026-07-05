@@ -384,7 +384,9 @@ private struct ChatMarkdownView: View {
     let isStreaming: Bool
     let onOpenWikiRoute: ((WikiRoute) -> Void)?
 
-    @AppStorage(ChatTranscriptDisplaySettings.fontScaleKey) private var chatFontScale = ChatTranscriptDisplaySettings.defaultFontScale
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
+    @ScaledMetric(relativeTo: .body) private var scaledBodyPointSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .caption) private var scaledCodePointSize: CGFloat = 12
 
     private var displayContent: String {
         WikiWikilinkPreprocessor.replacingWikilinks(in: content)
@@ -394,17 +396,29 @@ private struct ChatMarkdownView: View {
         ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
     }
 
+    private var effectiveBodyPointSize: CGFloat {
+        scaledBodyPointSize * CGFloat(effectiveFontScale)
+    }
+
+    private var effectiveCodePointSize: CGFloat {
+        scaledCodePointSize * CGFloat(effectiveFontScale)
+    }
+
+    private func scaledSpacing(_ value: CGFloat) -> CGFloat {
+        ChatTranscriptSpacing.scaled(value, fontScale: effectiveFontScale)
+    }
+
     var body: some View {
         Markdown(displayContent)
-            .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
+            .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming, fontScale: effectiveFontScale))
             .markdownTextStyle {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
-                FontSize(.em(effectiveFontScale))
+                FontSize(effectiveBodyPointSize)
             }
             .markdownTextStyle(\.code) {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88 * effectiveFontScale))
+                FontSize(effectiveCodePointSize)
                 ForegroundColor(ZoraBrand.foreground)
                 BackgroundColor(ZoraBrand.inlineCodeFill)
             }
@@ -413,7 +427,7 @@ private struct ChatMarkdownView: View {
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
                     .relativeLineSpacing(.em(AppFont.voiceRelativeLineSpacing))
-                    .padding(.bottom, ChatTranscriptSpacing.markdownBlock)
+                    .padding(.bottom, scaledSpacing(ChatTranscriptSpacing.markdownBlock))
             }
             .markdownBlockStyle(\.blockquote) { configuration in
                 HStack(spacing: 12) {
@@ -429,8 +443,8 @@ private struct ChatMarkdownView: View {
                         }
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, ChatTranscriptSpacing.turnBlock)
-                .padding(.bottom, ChatTranscriptSpacing.markdownBlock)
+                .padding(.top, scaledSpacing(ChatTranscriptSpacing.turnBlock))
+                .padding(.bottom, scaledSpacing(ChatTranscriptSpacing.markdownBlock))
             }
             .environment(\.openURL, OpenURLAction { url in
                 guard let route = WikiLinkResolver.resolve(url) else {
@@ -471,6 +485,10 @@ private struct ChatCodeBlock: View {
     let isStreaming: Bool
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
+    @ScaledMetric(relativeTo: .caption) private var scaledCodePointSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .subheadline) private var scaledCodeHeaderPointSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .title3) private var scaledCodeButtonPointSize: CGFloat = 20
     private let wrapsCodeBlockLines = false
     @State private var didCopy = false
     @State private var highlightedCode: NSAttributedString?
@@ -482,7 +500,7 @@ private struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(displayLanguage)
-                    .font(AppFont.subheadline(weight: .semibold))
+                    .font(AppFont.body(size: scaledCodeHeaderPointSize * CGFloat(effectiveFontScale), weight: .semibold))
 
                 Spacer()
 
@@ -493,7 +511,7 @@ private struct ChatCodeBlock: View {
                     impact.impactOccurred()
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "square.on.square")
-                        .font(AppFont.title3(weight: .semibold))
+                        .font(AppFont.body(size: scaledCodeButtonPointSize * CGFloat(effectiveFontScale), weight: .semibold))
                     .frame(width: 36, height: 36)
                     .contentTransition(.symbolEffect(.replace))
                 }
@@ -501,10 +519,10 @@ private struct ChatCodeBlock: View {
                 .foregroundStyle(SwiftUI.Color.primary)
                 .accessibilityLabel(didCopy ? "Copied code" : "Copy code")
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 10)
-            .padding(.top, 14)
-            .padding(.bottom, 4)
+            .padding(.leading, scaledSpacing(16))
+            .padding(.trailing, scaledSpacing(10))
+            .padding(.top, scaledSpacing(14))
+            .padding(.bottom, scaledSpacing(4))
 
             if wrapsCodeBlockLines {
                 styledCodeText(fixedHorizontal: false)
@@ -541,6 +559,14 @@ private struct ChatCodeBlock: View {
         .forcedLeftToRight()
     }
 
+    private var effectiveFontScale: Double {
+        ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
+    }
+
+    private func scaledSpacing(_ value: CGFloat) -> CGFloat {
+        ChatTranscriptSpacing.scaled(value, fontScale: effectiveFontScale)
+    }
+
     private var codeBlockBackground: SwiftUI.Color {
         ZoraBrand.codeBlockFill
     }
@@ -548,9 +574,17 @@ private struct ChatCodeBlock: View {
     @ViewBuilder
     private var codeText: some View {
         if let highlightedCode, highlightedRequest == highlightRequest {
-            HighlightedCodeBlockText(content: highlightedCode, wraps: wrapsCodeBlockLines)
+            HighlightedCodeBlockText(
+                content: highlightedCode,
+                wraps: wrapsCodeBlockLines,
+                fontScale: effectiveFontScale
+            )
         } else {
-            PlainCodeBlockText(content: content, wraps: wrapsCodeBlockLines)
+            PlainCodeBlockText(
+                content: content,
+                wraps: wrapsCodeBlockLines,
+                fontScale: effectiveFontScale
+            )
         }
     }
 
@@ -567,7 +601,7 @@ private struct ChatCodeBlock: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .padding(.bottom, 16)
+            .padding(.bottom, scaledSpacing(16))
     }
 
     private var highlightRequest: MarkdownCodeHighlightRequest {
@@ -647,6 +681,9 @@ private struct PlainCodeBlockText: View {
     /// `Text` so SwiftUI soft-wraps the line; when `false`, they stay side by side
     /// in an `HStack` for the horizontal-scroll layout.
     var wraps = false
+    var fontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale
+
+    @ScaledMetric(relativeTo: .caption) private var scaledCodePointSize: CGFloat = 12
 
     private var lines: [MarkdownPlainCodeLine] {
         MarkdownPlainCodeFormatter.lines(in: content)
@@ -669,8 +706,12 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(AppFont.mono(style: .caption))
+        .font(AppFont.mono(size: effectiveCodePointSize))
         .foregroundStyle(ZoraBrand.paper.opacity(0.88))
+    }
+
+    private var effectiveCodePointSize: CGFloat {
+        scaledCodePointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(fontScale))
     }
 
     private func combinedText(for line: MarkdownPlainCodeLine) -> Text {
@@ -685,6 +726,9 @@ private struct HighlightedCodeBlockText: View {
     /// See `PlainCodeBlockText.wraps`; the concatenated `Text` preserves each
     /// segment's syntax-highlight attributes.
     var wraps = false
+    var fontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale
+
+    @ScaledMetric(relativeTo: .caption) private var scaledCodePointSize: CGFloat = 12
 
     private var lines: [MarkdownAttributedCodeLine] {
         MarkdownAttributedCodeFormatter.lines(in: content)
@@ -707,7 +751,11 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
-        .font(AppFont.mono(style: .caption))
+        .font(AppFont.mono(size: effectiveCodePointSize))
+    }
+
+    private var effectiveCodePointSize: CGFloat {
+        scaledCodePointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(fontScale))
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
@@ -1278,11 +1326,23 @@ private struct PlainMarkdownFallbackView: View {
     let content: String
     let reason: MarkdownContentFallbackReason
 
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
+    @ScaledMetric(relativeTo: .body) private var scaledBodyPointSize: CGFloat = 17
+
     private let logger = Logger.hermesMarkdownRendering
+
+    private var effectiveBodyPointSize: CGFloat {
+        // `scaledBodyPointSize` is a Dynamic Type-aware `@ScaledMetric`; the
+        // chat slider then applies only its local transcript-size multiplier.
+        scaledBodyPointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
+    }
 
     var body: some View {
         Text(verbatim: content)
-            .font(AppFont.voice())
+            .font(.system(
+                size: effectiveBodyPointSize,
+                design: .serif
+            ).italic())
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
@@ -1295,8 +1355,17 @@ private struct PlainMarkdownFallbackView: View {
 }
 
 private extension MarkdownUI.Theme {
-    static func chat(colorScheme: ColorScheme, isStreaming: Bool) -> MarkdownUI.Theme {
-        MarkdownUI.Theme.gitHub
+    static func chat(
+        colorScheme: ColorScheme,
+        isStreaming: Bool,
+        fontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale
+    ) -> MarkdownUI.Theme {
+        let effectiveFontScale = ChatTranscriptDisplaySettings.clampedFontScale(fontScale)
+        func scaledSpacing(_ value: CGFloat) -> CGFloat {
+            ChatTranscriptSpacing.scaled(value, fontScale: effectiveFontScale)
+        }
+
+        return MarkdownUI.Theme.gitHub
             .text {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
@@ -1328,8 +1397,8 @@ private extension MarkdownUI.Theme {
                         }
                     Divider().overlay(ZoraBrand.codeBlockStroke)
                 }
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+                .padding(.top, scaledSpacing(24))
+                .padding(.bottom, scaledSpacing(16))
             }
             .heading2 { configuration in
                 VStack(alignment: .leading, spacing: 0) {
@@ -1344,14 +1413,14 @@ private extension MarkdownUI.Theme {
                         }
                     Divider().overlay(ZoraBrand.codeBlockStroke)
                 }
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+                .padding(.top, scaledSpacing(24))
+                .padding(.bottom, scaledSpacing(16))
             }
             .heading3 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
+                    .padding(.top, scaledSpacing(24))
+                    .padding(.bottom, scaledSpacing(16))
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1362,8 +1431,8 @@ private extension MarkdownUI.Theme {
             .heading4 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
+                    .padding(.top, scaledSpacing(24))
+                    .padding(.bottom, scaledSpacing(16))
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1373,8 +1442,8 @@ private extension MarkdownUI.Theme {
             .heading5 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
+                    .padding(.top, scaledSpacing(24))
+                    .padding(.bottom, scaledSpacing(16))
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1385,8 +1454,8 @@ private extension MarkdownUI.Theme {
             .heading6 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
+                    .padding(.top, scaledSpacing(24))
+                    .padding(.bottom, scaledSpacing(16))
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1401,25 +1470,25 @@ private extension MarkdownUI.Theme {
                     content: configuration.content,
                     isStreaming: isStreaming
                 )
-                .padding(.top, ChatTranscriptSpacing.turnBlock)
-                .padding(.bottom, ChatTranscriptSpacing.markdownRichBlock)
+                .padding(.top, scaledSpacing(ChatTranscriptSpacing.turnBlock))
+                .padding(.bottom, scaledSpacing(ChatTranscriptSpacing.markdownRichBlock))
             }
             .table { configuration in
                 ChatMarkdownTable(
                     label: configuration.label,
                     colorScheme: colorScheme
                 )
-                .padding(.bottom, ChatTranscriptSpacing.markdownRichBlock)
+                .padding(.bottom, scaledSpacing(ChatTranscriptSpacing.markdownRichBlock))
             }
             .listItem { configuration in
                 configuration.label
-                    .padding(.top, 4)
+                    .padding(.top, scaledSpacing(4))
             }
             .thematicBreak {
                 Divider()
                     .relativeFrame(height: .em(0.25))
                     .overlay(ZoraBrand.codeBlockStroke)
-                    .padding(.vertical, ChatTranscriptSpacing.markdownRichBlock)
+                    .padding(.vertical, scaledSpacing(ChatTranscriptSpacing.markdownRichBlock))
             }
             .tableCell { configuration in
                 TableCellWidthCap(
@@ -1437,8 +1506,8 @@ private extension MarkdownUI.Theme {
                         }
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 6)
-                .padding(.horizontal, 13)
+                .padding(.vertical, scaledSpacing(6))
+                .padding(.horizontal, scaledSpacing(13))
                 .relativeLineSpacing(.em(0.25))
                 .background(configuration.row == 0 ? ZoraBrand.cardFillStrong : Color.clear)
             }

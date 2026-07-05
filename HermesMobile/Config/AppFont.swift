@@ -53,6 +53,10 @@ enum AppFont {
         system(style, design: .monospaced, weight: weight)
     }
 
+    static func mono(size: CGFloat, weight: Font.Weight? = nil) -> Font {
+        .system(size: size, weight: weight, design: .monospaced)
+    }
+
     /// Warm assistant prose: Dynamic Type-scaled New York via SwiftUI's serif
     /// design, set in italic for the Samantha/Zora voice treatment.
     static func voice(style: Font.TextStyle = .body, weight: Font.Weight? = nil) -> Font {
