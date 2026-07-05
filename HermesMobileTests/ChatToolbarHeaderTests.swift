@@ -44,9 +44,9 @@ final class ChatToolbarHeaderTests: XCTestCase {
             ChatHeaderBackgroundGradientLayout.headerBarBottomY(topSafeAreaInset: topSafeAreaInset),
             headerBarBottom
         )
-        XCTAssertGreaterThanOrEqual(
+        XCTAssertEqual(
             ChatHeaderBackgroundGradientLayout.solidBottomY(topSafeAreaInset: topSafeAreaInset),
-            headerBarBottom
+            headerBarBottom + ChatHeaderBackgroundGradientLayout.solidExtensionBelowHeader
         )
     }
 
