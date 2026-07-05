@@ -681,3 +681,29 @@ final class TranscriptCardExpansionStoreTests: XCTestCase {
         )
     }
 }
+
+extension TranscriptCardExpansionStoreTests {
+    /// Truncate-and-regrow flows (edit/regenerate//undo//retry) reset the
+    /// store so positional keys can't misattribute old toggles to new content.
+    func testResetClearsAllToggles() {
+        let store = TranscriptCardExpansionStore()
+        store.setUserToggledExpansion(true, forKey: "reasoning:transcript:8:0")
+        store.setUserToggledExpansion(false, forKey: "tools:loose:0")
+
+        store.reset()
+
+        XCTAssertNil(store.userToggledExpansion(forKey: "reasoning:transcript:8:0"))
+        XCTAssertNil(store.userToggledExpansion(forKey: "tools:loose:0"))
+    }
+
+    /// A loose (unanchored) live card predicts the index it will occupy once
+    /// archived — index 0 when nothing is archived yet — so its key matches
+    /// the archived card's "reasoning:loose:0", not a dead "live" literal.
+    func testLooseLiveCardKeyMatchesFirstArchivedLooseKey() {
+        let store = TranscriptCardExpansionStore()
+        store.setUserToggledExpansion(true, forKey: "reasoning:loose:0")
+
+        XCTAssertEqual(store.userToggledExpansion(forKey: "reasoning:loose:0"), true)
+        XCTAssertNil(store.userToggledExpansion(forKey: "reasoning:loose:live"))
+    }
+}

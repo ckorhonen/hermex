@@ -36,6 +36,14 @@ final class TranscriptCardExpansionStore {
     func setUserToggledExpansion(_ value: Bool, forKey key: String) {
         userToggledByKey[key] = value
     }
+
+    /// Keys are positional (renderID + index), so any flow that truncates the
+    /// transcript and regrows it (edit, regenerate, /undo, /retry) must reset
+    /// the store — otherwise a toggle made on the *old* content at a slot is
+    /// silently applied to the *new* content that lands in the same slot.
+    func reset() {
+        userToggledByKey = [:]
+    }
 }
 
 private struct TranscriptCardExpansionStoreKey: EnvironmentKey {
@@ -426,11 +434,14 @@ struct ChatTranscriptView: View {
     private var liveResponseBlocks: some View {
         if activeStreamID != nil {
             if showsThinkingAndToolCards {
+                // Like the anchored path, a loose live card is keyed with the
+                // index it will occupy once archived, so a mid-stream toggle
+                // survives the live → archived transition.
                 if hasLiveReasoningText,
                    !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
                     ReasoningBlockView(
                         text: liveReasoningText,
-                        expansionKey: "reasoning:loose:live"
+                        expansionKey: "reasoning:loose:\(reasoningGroups.filter { $0.anchorMessageID == nil }.count)"
                     )
                 }
 
@@ -441,7 +452,7 @@ struct ChatTranscriptView: View {
                             anchorMessageID: toolCallAnchorMessageID,
                             toolCalls: liveToolCalls
                         ),
-                        expansionKey: "tools:loose:live"
+                        expansionKey: "tools:loose:\(completedToolCallGroupsForAnchor(nil).count)"
                     )
                 }
             }

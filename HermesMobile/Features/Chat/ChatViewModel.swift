@@ -2711,6 +2711,7 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: error)
             }
 
+            cardExpansionStore.reset()
             await loadMessages()
             if let lastError {
                 return .unsupported(friendlyMessage: lastError.localizedDescription)
@@ -2758,6 +2759,8 @@ final class ChatViewModel {
             if let error = retryResponse.error {
                 return .unsupported(friendlyMessage: error)
             }
+
+            cardExpansionStore.reset()
 
             let lastUserText = retryResponse.lastUserText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !lastUserText.isEmpty else {
@@ -3041,6 +3044,7 @@ final class ChatViewModel {
                 liveReasoningText = ""
                 toolCallAnchorMessageID = nil
                 reasoningAnchorMessageID = nil
+                cardExpansionStore.reset()
 
                 if let modelContext {
                     do {
@@ -3144,6 +3148,7 @@ final class ChatViewModel {
                 liveReasoningText = ""
                 toolCallAnchorMessageID = nil
                 reasoningAnchorMessageID = nil
+                cardExpansionStore.reset()
 
                 if let modelContext {
                     do {
