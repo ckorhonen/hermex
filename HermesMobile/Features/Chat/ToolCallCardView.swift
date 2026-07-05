@@ -4,8 +4,19 @@ struct ToolCallCardView: View {
     let toolCall: ToolCall
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
+    // Dynamic Type first, then the chat font-size preference — mirrors the
+    // message bubbles so the card chrome tracks the transcript text.
+    @ScaledMetric(relativeTo: .caption) private var scaledCaptionPointSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var scaledCaption2PointSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption) private var scaledIconPointSize: CGFloat = 14
     @State private var userToggledExpansion: Bool?
+
+
+    private func cardFontSize(_ base: CGFloat) -> CGFloat {
+        base * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
+    }
 
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
@@ -69,7 +80,7 @@ struct ToolCallCardView: View {
     private func header(statusDisplay: ToolCallStatusDisplay) -> some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
             Image(systemName: statusIcon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: cardFontSize(scaledIconPointSize), weight: .semibold))
                 .foregroundStyle(statusColor)
                 .frame(width: 18, height: 18)
 
@@ -92,7 +103,7 @@ struct ToolCallCardView: View {
             Spacer(minLength: 6)
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
+                .font(.system(size: cardFontSize(scaledCaptionPointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
@@ -100,7 +111,7 @@ struct ToolCallCardView: View {
 
     private var titleText: some View {
         Text(toolCall.displayName)
-            .font(AppFont.caption(weight: .semibold))
+            .font(.system(size: cardFontSize(scaledCaptionPointSize), weight: .semibold))
             .foregroundStyle(.primary)
             .lineLimit(1)
     }
@@ -129,11 +140,11 @@ struct ToolCallCardView: View {
     private func statusDetail(_ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Status")
-                .font(AppFont.caption2(weight: .semibold))
+                .font(.system(size: cardFontSize(scaledCaption2PointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
 
             Text(value)
-                .font(AppFont.caption())
+                .font(.system(size: cardFontSize(scaledCaptionPointSize)))
                 .foregroundStyle(statusColor)
                 .textSelection(.enabled)
         }
@@ -142,7 +153,7 @@ struct ToolCallCardView: View {
     private func argumentsSection(_ rows: [ToolCallArgumentDisplay]) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Arguments")
-                .font(AppFont.caption2(weight: .semibold))
+                .font(.system(size: cardFontSize(scaledCaption2PointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -158,11 +169,11 @@ struct ToolCallCardView: View {
     private func resultSection(_ result: ToolCallResultDisplay) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(result.title)
-                .font(AppFont.caption2(weight: .semibold))
+                .font(.system(size: cardFontSize(scaledCaption2PointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
 
             Text(result.text)
-                .font(result.isMonospaced ? AppFont.mono(style: .caption) : AppFont.caption())
+                .font(result.isMonospaced ? AppFont.mono(size: cardFontSize(scaledCaptionPointSize)) : .system(size: cardFontSize(scaledCaptionPointSize)))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -191,14 +202,14 @@ struct ToolCallCardView: View {
 
     private func argumentKey(_ value: String) -> some View {
         Text(value)
-            .font(AppFont.mono(style: .caption2, weight: .semibold))
+            .font(AppFont.mono(size: cardFontSize(scaledCaption2PointSize), weight: .semibold))
             .foregroundStyle(.secondary)
             .lineLimit(1)
     }
 
     private func argumentValue(_ value: String) -> some View {
         Text(value)
-            .font(AppFont.mono(style: .caption))
+            .font(AppFont.mono(size: cardFontSize(scaledCaptionPointSize)))
             .foregroundStyle(.primary)
             .textSelection(.enabled)
     }
@@ -234,9 +245,16 @@ struct TranscriptStatusPill: View {
     let text: String
     let color: Color
 
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
+    @ScaledMetric(relativeTo: .caption2) private var scaledCaption2PointSize: CGFloat = 11
+
+    private func cardFontSize(_ base: CGFloat) -> CGFloat {
+        base * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
+    }
+
     var body: some View {
         Text(text)
-            .font(AppFont.caption2(weight: .semibold))
+            .font(.system(size: cardFontSize(scaledCaption2PointSize), weight: .semibold))
             .foregroundStyle(color)
             .lineLimit(1)
             .padding(.horizontal, 6)

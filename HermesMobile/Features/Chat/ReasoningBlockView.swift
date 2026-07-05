@@ -8,7 +8,13 @@ struct ReasoningBlockView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
     @Environment(\.transcriptCardExpansionStore) private var expansionStore
+    // Dynamic Type first, then the chat font-size preference on top — the
+    // same layering the message bubbles use (777aab4), so the card chrome
+    // tracks the transcript text instead of staying fixed.
+    @ScaledMetric(relativeTo: .caption) private var scaledCaptionPointSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption) private var scaledIconPointSize: CGFloat = 14
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var localUserToggledExpansion: Bool?
 
@@ -25,6 +31,11 @@ struct ReasoningBlockView: View {
         } else {
             localUserToggledExpansion = value
         }
+    }
+
+
+    private func cardFontSize(_ base: CGFloat) -> CGFloat {
+        base * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
     }
 
     private var isExpanded: Bool {
@@ -70,7 +81,7 @@ struct ReasoningBlockView: View {
     private func header(summary: String) -> some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
             Image(systemName: "brain.head.profile")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: cardFontSize(scaledIconPointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 18, height: 18)
 
@@ -89,7 +100,7 @@ struct ReasoningBlockView: View {
             Spacer(minLength: 6)
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
+                .font(.system(size: cardFontSize(scaledCaptionPointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
@@ -97,14 +108,14 @@ struct ReasoningBlockView: View {
 
     private var titleText: some View {
         Text("Thinking")
-            .font(AppFont.caption(weight: .semibold))
+            .font(.system(size: cardFontSize(scaledCaptionPointSize), weight: .semibold))
             .foregroundStyle(.primary)
             .lineLimit(1)
     }
 
     private func summaryText(_ value: String, lineLimit: Int) -> some View {
         Text(value)
-            .font(AppFont.caption())
+            .font(.system(size: cardFontSize(scaledCaptionPointSize)))
             .foregroundStyle(.secondary)
             .lineLimit(lineLimit)
     }
