@@ -55,11 +55,15 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         Self.audioExtensions.contains(pathExtension)
     }
 
+    var isVideoCandidate: Bool {
+        Self.videoExtensions.contains(pathExtension)
+    }
+
     var isTextDocumentCandidate: Bool {
         Self.textDocumentExtensions.contains(pathExtension)
     }
 
-    private var pathExtension: String {
+    var pathExtension: String {
         switch source {
         case let .remoteURL(url):
             return url.pathExtension.lowercased()
@@ -74,6 +78,12 @@ struct TranscriptMediaReference: Equatable, Identifiable {
 
     private static let audioExtensions: Set<String> = [
         "aac", "caf", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav"
+    ]
+
+    /// Mirrors hermes-webui's `_VIDEO_EXTS` (static/ui.js):
+    /// `/\.(mp4|webm|mkv|mov|avi|ogv|m4v)$/i`.
+    private static let videoExtensions: Set<String> = [
+        "avi", "m4v", "mkv", "mov", "mp4", "ogv", "webm"
     ]
 
     private static let textDocumentExtensions: Set<String> = [

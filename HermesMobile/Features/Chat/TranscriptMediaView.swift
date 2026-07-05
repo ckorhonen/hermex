@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import UIKit
 
@@ -90,6 +91,15 @@ private struct TranscriptMediaThumbnailView: View {
                     didAttemptLoad = true
                 }
             }
+        } else if reference.isVideoCandidate, loadMediaData != nil {
+            Button {
+                onPreviewMedia?(reference)
+            } label: {
+                TranscriptMediaVideoChip(reference: reference)
+            }
+            .buttonStyle(.chatTactile(.card))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityLabel(String(localized: "Open media video \(reference.displayName)"))
         } else if reference.isTextDocumentCandidate, loadMediaData != nil {
             Button {
                 onPreviewMedia?(reference)
@@ -132,23 +142,25 @@ private struct TranscriptMediaThumbnailView: View {
     }
 }
 
-private struct TranscriptMediaDocumentChip: View {
-    let reference: TranscriptMediaReference
+private struct TranscriptMediaChipShell: View {
+    let iconName: String
+    let title: String
+    let subtitle: String
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc.text")
+            Image(systemName: iconName)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(ZoraBrand.secondaryForeground)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
+                Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(ZoraBrand.foreground)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                Text("Open file")
+                Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(ZoraBrand.secondaryForeground)
                     .lineLimit(1)
@@ -162,6 +174,30 @@ private struct TranscriptMediaDocumentChip: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
+        )
+    }
+}
+
+private struct TranscriptMediaDocumentChip: View {
+    let reference: TranscriptMediaReference
+
+    var body: some View {
+        TranscriptMediaChipShell(
+            iconName: "doc.text",
+            title: reference.displayName,
+            subtitle: String(localized: "Open file")
+        )
+    }
+}
+
+private struct TranscriptMediaVideoChip: View {
+    let reference: TranscriptMediaReference
+
+    var body: some View {
+        TranscriptMediaChipShell(
+            iconName: "play.rectangle",
+            title: reference.displayName,
+            subtitle: String(localized: "Play video")
         )
     }
 }
@@ -190,32 +226,10 @@ private struct TranscriptMediaUnavailableChip: View {
     let reference: TranscriptMediaReference
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: iconName)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(ZoraBrand.secondaryForeground)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(ZoraBrand.foreground)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text("Media unavailable")
-                    .font(.caption2)
-                    .foregroundStyle(ZoraBrand.secondaryForeground)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 240, alignment: .leading)
-        .background(ZoraBrand.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
+        TranscriptMediaChipShell(
+            iconName: iconName,
+            title: reference.displayName,
+            subtitle: String(localized: "Media unavailable")
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Media unavailable \(reference.displayName)"))
@@ -224,6 +238,7 @@ private struct TranscriptMediaUnavailableChip: View {
     private var iconName: String {
         if reference.isRasterImageCandidate { return "photo" }
         if reference.isAudioCandidate { return "waveform" }
+        if reference.isVideoCandidate { return "film" }
         if reference.isTextDocumentCandidate { return "doc.text" }
         return "doc"
     }
@@ -285,12 +300,16 @@ struct TranscriptMediaPreviewView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.isLoading && viewModel.previewData == nil && viewModel.textContent == nil {
+                if viewModel.isLoading,
+                   viewModel.previewData == nil,
+                   viewModel.textContent == nil,
+                   viewModel.videoFileURL == nil {
                     ProgressView("Loading media...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorMessage = viewModel.errorMessage,
                           viewModel.previewData == nil,
-                          viewModel.textContent == nil {
+                          viewModel.textContent == nil,
+                          viewModel.videoFileURL == nil {
                     ContentUnavailableView {
                         Label("Could Not Load Media", systemImage: "exclamationmark.triangle")
                     } description: {
@@ -302,6 +321,8 @@ struct TranscriptMediaPreviewView: View {
                     }
                 } else if let data = viewModel.previewData, let image = UIImage(data: data) {
                     imageContent(image)
+                } else if let videoFileURL = viewModel.videoFileURL {
+                    videoContent(videoFileURL)
                 } else if let textContent = viewModel.textContent {
                     textDocumentContent(textContent)
                 } else {
@@ -388,6 +409,17 @@ struct TranscriptMediaPreviewView: View {
         .background(Color(.systemBackground))
     }
 
+    private func videoContent(_ url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            mediaHeader
+                .padding([.horizontal, .top])
+
+            TranscriptMediaVideoPlayerView(url: url)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(.systemBackground))
+    }
+
     private func textDocumentContent(_ content: String) -> some View {
         ScrollView([.vertical, .horizontal]) {
             VStack(alignment: .leading, spacing: 12) {
@@ -460,3 +492,24 @@ struct TranscriptMediaPreviewView: View {
         }
     }
 }
+
+/// Hosts the AVKit player for a downloaded transcript video. The player is
+/// held in `@State` (keyed on the file URL) so SwiftUI body re-evaluations
+/// don't recreate it and reset playback position.
+private struct TranscriptMediaVideoPlayerView: View {
+    let url: URL
+
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .task(id: url) {
+                player?.pause()
+                player = AVPlayer(url: url)
+            }
+            .onDisappear {
+                player?.pause()
+            }
+    }
+}
+
