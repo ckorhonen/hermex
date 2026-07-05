@@ -514,6 +514,54 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(attachment.isImage, true)
     }
 
+    /// Tool-call cards and multi-part content must survive the offline cache
+    /// round-trip; dropping them leaves offline transcripts text-only.
+    func testCacheMessagesRoundTripsToolCallsAndContentParts() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let now = cachedAt.addingTimeInterval(60)
+
+        let toolCalls: [JSONValue] = [
+            .object(["name": .string("bash"), "args": .object(["cmd": .string("ls")])])
+        ]
+        let contentParts: [JSONValue] = [
+            .object(["type": .string("text"), "text": .string("here")])
+        ]
+        let messages = [
+            ChatMessage(
+                role: "assistant",
+                content: "here",
+                timestamp: 1_770_000_000,
+                messageId: "m1",
+                toolUseId: "tu1",
+                toolCalls: toolCalls,
+                contentParts: contentParts
+            )
+        ]
+
+        try CacheStore.cacheMessages(
+            messages,
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let cachedMessages = try CacheStore.cachedMessages(
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            now: now
+        )
+
+        XCTAssertEqual(cachedMessages.count, 1)
+        let message = try XCTUnwrap(cachedMessages.first)
+        XCTAssertEqual(message.toolUseId, "tu1")
+        XCTAssertEqual(message.toolCalls, toolCalls)
+        XCTAssertEqual(message.contentParts, contentParts)
+    }
+
     // MARK: - Per-server isolation (#18)
 
     func testCachedMessagesAreScopedToTheirServerForTheSameSessionID() throws {
