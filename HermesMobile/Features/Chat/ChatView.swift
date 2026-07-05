@@ -103,6 +103,7 @@ struct ChatView: View {
     let childSessions: [SessionSummary]
     let onOpenRelatedSession: (SessionSummary) -> Void
     let onSessionTitleChange: (String, String) -> Void
+    let onSessionActivityChange: (SessionActivityUpdate) -> Void
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
@@ -159,6 +160,7 @@ struct ChatView: View {
         childSessions: [SessionSummary] = [],
         onOpenRelatedSession: @escaping (SessionSummary) -> Void = { _ in },
         onSessionTitleChange: @escaping (String, String) -> Void = { _, _ in },
+        onSessionActivityChange: @escaping (SessionActivityUpdate) -> Void = { _ in },
         autoStartsVoiceInput: Bool = false
     ) {
         self.session = session
@@ -168,6 +170,7 @@ struct ChatView: View {
         self.childSessions = childSessions
         self.onOpenRelatedSession = onOpenRelatedSession
         self.onSessionTitleChange = onSessionTitleChange
+        self.onSessionActivityChange = onSessionActivityChange
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -430,6 +433,10 @@ struct ChatView: View {
             }
             .onChange(of: viewModel.activeStreamID) {
                 handleActiveStreamChange()
+                notifySessionActivityChange()
+            }
+            .onChange(of: viewModel.messages.count) {
+                notifySessionActivityChange()
             }
             .onChange(of: viewModel.cacheFirstReconcileScrollToken) {
                 // Open a brief snap window so the cache-first reconcile re-pin (and any
@@ -488,7 +495,8 @@ struct ChatView: View {
                     session: session,
                     server: server,
                     onAPIError: onAPIError,
-                    onSessionTitleChange: onSessionTitleChange
+                    onSessionTitleChange: onSessionTitleChange,
+                    onSessionActivityChange: onSessionActivityChange
                 )
             }
             .sheet(isPresented: $showsChildSessionsSheet) {
@@ -1274,6 +1282,27 @@ struct ChatView: View {
         }
 
         return didLoad
+    }
+
+    /// Pushes this chat's live activity (stream state, message count, latest message
+    /// timestamp) to the session list so its row updates without a list reload.
+    /// Mirrors `notifySessionTitleChange`.
+    private func notifySessionActivityChange() {
+        guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty
+        else {
+            return
+        }
+
+        onSessionActivityChange(SessionActivityUpdate(
+            sessionID: sessionID,
+            activeStreamId: viewModel.activeStreamID,
+            isStreaming: viewModel.activeStreamID != nil,
+            messageCount: viewModel.messages.isEmpty
+                ? nil
+                : viewModel.messagesOffset + viewModel.messages.count,
+            lastMessageAt: viewModel.messages.last?.timestamp
+        ))
     }
 
     private func notifySessionTitleChange(_ title: String) {

@@ -1068,6 +1068,138 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testApplySessionActivityUpdatePatchesLocalRowAndCacheWithoutNetworkRequest() async throws {
+        var requestedPaths: [String] = []
+        let context = try makeContext()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load(modelContext: context)
+        let didApply = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: " session-abc ",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: 7,
+                lastMessageAt: 1_700_000_000
+            ),
+            modelContext: context
+        )
+        let didReapply = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: 7,
+                lastMessageAt: 1_700_000_000
+            ),
+            modelContext: context
+        )
+        let cachedSessions = try CacheStore.cachedSessions(serverURL: server, in: context)
+        let row = try XCTUnwrap(viewModel.sessions.first)
+
+        XCTAssertTrue(didApply)
+        XCTAssertFalse(didReapply)
+        XCTAssertEqual(requestedPaths, ["/api/sessions"])
+        XCTAssertEqual(row.activeStreamId, "stream-1")
+        XCTAssertEqual(row.isStreaming, true)
+        XCTAssertEqual(row.messageCount, 7)
+        XCTAssertEqual(row.lastMessageAt, 1_700_000_000)
+        XCTAssertEqual(row.title, "Planning")
+        XCTAssertEqual(cachedSessions.first?.activeStreamId, "stream-1")
+        XCTAssertEqual(cachedSessions.first?.messageCount, 7)
+    }
+
+    @MainActor
+    func testApplySessionActivityUpdateMakesRowEligibleForActiveRowMonitor() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load()
+        let idleRow = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertFalse(SessionRowView.isActiveStreaming(idleRow))
+        XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), [])
+
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: nil,
+                lastMessageAt: nil
+            )
+        )
+        let streamingRow = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertTrue(SessionRowView.isActiveStreaming(streamingRow))
+        XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), ["stream-1"])
+        // messageCount/lastMessageAt were unknown, so the row keeps its existing values.
+        XCTAssertEqual(streamingRow.title, "Planning")
+
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: nil,
+                isStreaming: false,
+                messageCount: nil,
+                lastMessageAt: nil
+            )
+        )
+        let finishedRow = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertFalse(SessionRowView.isActiveStreaming(finishedRow))
+        XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), [])
+    }
+
+    @MainActor
+    func testApplySessionActivityUpdateResortsSessionsByRecency() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-newer",
+                  "title": "Newer",
+                  "last_message_at": 200,
+                  "archived": false
+                },
+                {
+                  "session_id": "session-older",
+                  "title": "Older",
+                  "last_message_at": 100,
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-newer", "session-older"])
+
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-older",
+                activeStreamId: "stream-1",
+                isStreaming: true,
+                messageCount: nil,
+                lastMessageAt: 300
+            )
+        )
+
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-older", "session-newer"])
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["session-older", "session-newer"]
+        )
+    }
+
+    @MainActor
     func testRenameSessionBlocksBlankTitleBeforeNetworkRequest() async throws {
         let viewModel = try makeViewModel { request in
             XCTFail("Blank session titles should not make network requests: \(request.url?.path ?? "nil")")

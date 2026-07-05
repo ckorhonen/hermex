@@ -614,6 +614,45 @@ final class SessionListViewModel {
         return true
     }
 
+    /// Patches the matching row with live activity pushed from an open chat
+    /// (stream started/ended, new messages) without any network request, then
+    /// re-sorts the list so the active row surfaces by recency. Making the row's
+    /// `activeStreamId`/`isStreaming` visible here is also what flips the view's
+    /// active-row monitor eligibility so the 1 Hz poll starts.
+    @discardableResult
+    func applySessionActivityUpdate(
+        _ update: SessionActivityUpdate,
+        modelContext: ModelContext? = nil
+    ) -> Bool {
+        guard let sessionID = Self.nonEmpty(update.sessionID),
+              let existingIndex = sessions.firstIndex(where: { $0.sessionId == sessionID })
+        else {
+            return false
+        }
+
+        let existingSession = sessions[existingIndex]
+        let updatedSession = existingSession.replacingActivity(
+            activeStreamId: Self.nonEmpty(update.activeStreamId),
+            isStreaming: update.isStreaming,
+            messageCount: update.messageCount,
+            lastMessageAt: update.lastMessageAt
+        )
+        guard updatedSession != existingSession else { return false }
+
+        sessions[existingIndex] = updatedSession
+        sessions = Self.sortedSessions(sessions)
+
+        if let modelContext {
+            do {
+                try CacheStore.cacheSession(updatedSession, serverURL: server, in: modelContext)
+            } catch {
+                cacheErrorMessage = error.localizedDescription
+            }
+        }
+
+        return true
+    }
+
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
         guard !isViewingCachedData else {
             actionErrorMessage = String(localized: "Reconnect to the server to rename a session.")

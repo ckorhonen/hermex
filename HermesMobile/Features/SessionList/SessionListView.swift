@@ -131,7 +131,8 @@ struct SessionListView: View {
                     onAPIError: authManager.handleAPIError,
                     childSessions: childSessions(for: session),
                     onOpenRelatedSession: openSession,
-                    onSessionTitleChange: handleSessionTitleChange
+                    onSessionTitleChange: handleSessionTitleChange,
+                    onSessionActivityChange: handleSessionActivityChange
                 )
             }
             .navigationDestination(item: $pendingNewChat) { route in
@@ -145,6 +146,7 @@ struct SessionListView: View {
                     server: server,
                     viewModel: viewModel,
                     onSessionTitleChange: handleSessionTitleChange,
+                    onSessionActivityChange: handleSessionActivityChange,
                     onAPIError: authManager.handleAPIError
                 )
             }
@@ -226,6 +228,7 @@ struct SessionListView: View {
                 server: server,
                 viewModel: viewModel,
                 onSessionTitleChange: handleSessionTitleChange,
+                onSessionActivityChange: handleSessionActivityChange,
                 onAPIError: authManager.handleAPIError,
                 onSessionCreated: { session in
                     pendingNewChat = nil
@@ -243,7 +246,8 @@ struct SessionListView: View {
                 onAPIError: authManager.handleAPIError,
                 childSessions: childSessions(for: session),
                 onOpenRelatedSession: openSession,
-                onSessionTitleChange: handleSessionTitleChange
+                onSessionTitleChange: handleSessionTitleChange,
+                onSessionActivityChange: handleSessionActivityChange
             )
             .id(session.id)
         } else {
@@ -811,6 +815,15 @@ struct SessionListView: View {
         }
     }
 
+    /// Mirrors `handleSessionTitleChange` for live activity pushed from the open chat
+    /// (split view keeps the list visible next to it): patches the row in place so
+    /// its streaming indicator, message count, and recency ordering stay current.
+    /// The patched `activeStreamId` also flips `activeSessionMonitorTaskID` so the
+    /// 1 Hz active-row monitor starts while the stream runs.
+    private func handleSessionActivityChange(_ update: SessionActivityUpdate) {
+        viewModel.applySessionActivityUpdate(update, modelContext: modelContext)
+    }
+
     private func monitorActiveSessionRows() async {
         while !Task.isCancelled {
             let taskID = activeSessionMonitorTaskID
@@ -1356,6 +1369,7 @@ private struct PendingNewChatView: View {
     let server: URL
     let viewModel: SessionListViewModel
     let onSessionTitleChange: (String, String) -> Void
+    let onSessionActivityChange: (SessionActivityUpdate) -> Void
     let onAPIError: (Error) -> Void
     let onSessionCreated: (SessionSummary) -> Void
     let initialAttachments: [SharedAttachmentImport]
@@ -1380,12 +1394,14 @@ private struct PendingNewChatView: View {
         server: URL,
         viewModel: SessionListViewModel,
         onSessionTitleChange: @escaping (String, String) -> Void,
+        onSessionActivityChange: @escaping (SessionActivityUpdate) -> Void = { _ in },
         onAPIError: @escaping (Error) -> Void,
         onSessionCreated: @escaping (SessionSummary) -> Void = { _ in }
     ) {
         self.server = server
         self.viewModel = viewModel
         self.onSessionTitleChange = onSessionTitleChange
+        self.onSessionActivityChange = onSessionActivityChange
         self.onAPIError = onAPIError
         self.onSessionCreated = onSessionCreated
         self.initialAttachments = initialAttachments
@@ -1407,6 +1423,7 @@ private struct PendingNewChatView: View {
                     initialAttachments: initialAttachments,
                     loadsInitialMessages: false,
                     onSessionTitleChange: onSessionTitleChange,
+                    onSessionActivityChange: onSessionActivityChange,
                     autoStartsVoiceInput: autoStartsVoiceInput
                 )
             } else {
