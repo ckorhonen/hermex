@@ -133,6 +133,7 @@ struct SessionStatusResponse: Decodable, Equatable {
     let sessionId: String?
     let activeStreamId: String?
     let isStreaming: Bool?
+    let agentRunning: Bool?
     let pendingUserMessage: String?
     let error: String?
 }
@@ -275,6 +276,16 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
     /// Update this when `SessionSummary` gains a new stored property.
     func replacingTitle(with title: String) -> SessionSummary {
+        replacing(title: title, activeStreamId: activeStreamId, isStreaming: isStreaming)
+    }
+
+    /// Mirrors all stored fields while updating the lightweight server status used by
+    /// session-list live/unread indicators.
+    func replacingActiveState(activeStreamId: String?, isStreaming: Bool?) -> SessionSummary {
+        replacing(title: title, activeStreamId: activeStreamId, isStreaming: isStreaming)
+    }
+
+    private func replacing(title: String?, activeStreamId: String?, isStreaming: Bool?) -> SessionSummary {
         SessionSummary(
             sessionId: sessionId,
             title: title,

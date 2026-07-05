@@ -623,10 +623,7 @@ struct ChatView: View {
     @ToolbarContentBuilder
     private var chatToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            ChatToolbarTitleLabel(
-                title: displayTitle,
-                subtitle: headerSubtitle
-            )
+            ChatToolbarTitleLabel(title: displayTitle)
         }
 
         ToolbarItem(placement: .topBarTrailing) {
@@ -1206,13 +1203,6 @@ struct ChatView: View {
 
     private var displayTitle: String {
         viewModel.displayTitle
-    }
-
-    private var headerSubtitle: String? {
-        ChatToolbarSubtitleResolver.subtitle(
-            workspacePath: viewModel.selectedWorkspacePath,
-            profileTitle: viewModel.selectedProfileTitle
-        )
     }
 
     private func shouldRenderMessageRow(_ message: ChatMessage) -> Bool {
@@ -2285,40 +2275,18 @@ enum ChatReferenceDraftBuilder {
 }
 
 struct ChatToolbarTitleLabel: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
     let title: String
-    let subtitle: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .font(AppFont.voice(style: .body))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            if showsSubtitle, let subtitle {
-                Text(subtitle)
-                    .font(AppFont.caption2())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
+        Text(title)
+            .font(AppFont.voice(style: .body))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
         .frame(maxWidth: .infinity, alignment: .leading)
         .multilineTextAlignment(.leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var showsSubtitle: Bool {
-        !dynamicTypeSize.isAccessibilitySize
-    }
-
-    private var accessibilityLabel: String {
-        guard let subtitle else { return title }
-        return "\(title), \(subtitle)"
+        .accessibilityLabel(title)
     }
 }
 
@@ -2331,18 +2299,9 @@ struct ChatHeaderBackgroundGradient: View {
             let visibleHeight = ChatHeaderBackgroundGradientLayout.visibleHeight(
                 topSafeAreaInset: topSafeAreaInset
             )
-            let solidStop = ChatHeaderBackgroundGradientLayout.solidStop(
-                topSafeAreaInset: topSafeAreaInset
-            )
-            let fadeKneeStop = ChatHeaderBackgroundGradientLayout.fadeKneeStop(
-                topSafeAreaInset: topSafeAreaInset
-            )
-
             LinearGradient(
                 stops: [
-                    .init(color: gradientColor, location: 0),
-                    .init(color: gradientColor.opacity(0.98), location: solidStop),
-                    .init(color: gradientColor.opacity(fadeKneeOpacity), location: fadeKneeStop),
+                    .init(color: gradientColor.opacity(topOpacity), location: 0),
                     .init(color: gradientColor.opacity(0), location: 1)
                 ],
                 startPoint: .top,
@@ -2361,20 +2320,17 @@ struct ChatHeaderBackgroundGradient: View {
         ZoraBrand.backgroundTop
     }
 
-    private var fadeKneeOpacity: Double {
-        colorScheme == .dark ? 0.48 : 0.40
+    private var topOpacity: Double {
+        colorScheme == .dark ? 0.84 : 0.74
     }
 }
 
 enum ChatHeaderBackgroundGradientLayout {
-    /// Inline navigation chrome plus the two-line principal title area.
+    /// Inline navigation chrome plus the titlebar/principal title area.
     static let inlineHeaderBarHeight: CGFloat = 56
-    /// Keep the fully opaque portion just below the toolbar chrome. The transcript should
-    /// only be softened at the very top edge, not washed out under a tall overlay.
-    static let solidExtensionBelowHeader: CGFloat = 4
-    /// Short tail from the header into the first few transcript points.
-    static let fadeTailHeight: CGFloat = 18
-    static let minimumVisibleHeight: CGFloat = 78
+    /// A small tail below the titlebar keeps the fade from ending at a hard seam.
+    static let fadeExtensionBelowHeader: CGFloat = 12
+    static let minimumVisibleHeight: CGFloat = 76
 
     static let screenTopY: CGFloat = 0
 
@@ -2382,25 +2338,8 @@ enum ChatHeaderBackgroundGradientLayout {
         max(0, topSafeAreaInset) + inlineHeaderBarHeight
     }
 
-    static func solidBottomY(topSafeAreaInset: CGFloat) -> CGFloat {
-        solidHeight(topSafeAreaInset: topSafeAreaInset)
-    }
-
     static func visibleHeight(topSafeAreaInset: CGFloat) -> CGFloat {
-        max(minimumVisibleHeight, solidHeight(topSafeAreaInset: topSafeAreaInset) + fadeTailHeight)
-    }
-
-    static func solidHeight(topSafeAreaInset: CGFloat) -> CGFloat {
-        max(0, topSafeAreaInset) + inlineHeaderBarHeight + solidExtensionBelowHeader
-    }
-
-    static func solidStop(topSafeAreaInset: CGFloat) -> CGFloat {
-        solidHeight(topSafeAreaInset: topSafeAreaInset) / visibleHeight(topSafeAreaInset: topSafeAreaInset)
-    }
-
-    static func fadeKneeStop(topSafeAreaInset: CGFloat) -> CGFloat {
-        let solidStop = solidStop(topSafeAreaInset: topSafeAreaInset)
-        return solidStop + ((1 - solidStop) * 0.25)
+        max(minimumVisibleHeight, headerBarBottomY(topSafeAreaInset: topSafeAreaInset) + fadeExtensionBelowHeader)
     }
 }
 
@@ -2472,18 +2411,8 @@ struct ChatToolbarActionSlot<Content: View>: View {
 }
 
 enum ChatToolbarSubtitleResolver {
-    static func subtitle(workspacePath _: String?, profileTitle: String?) -> String? {
-        guard let profile = nonEmpty(profileTitle), profile != "Profile" else {
-            return nil
-        }
-
-        return profile
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    static func subtitle(workspacePath _: String?, profileTitle _: String?) -> String? {
+        nil
     }
 }
 

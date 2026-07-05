@@ -95,18 +95,18 @@ struct SessionSidebarUtilityRows: View {
     // driven by a value-based .animation on the List in SessionListView, which
     // works even though the disclosure booleans are @AppStorage-backed.
     var body: some View {
-        activeProfileHeader
+        topLevelUtilityGrid
+            .padding(.horizontal, 24)
             .padding(.top, topPadding)
+            .sessionsScreenListRow()
+
+        activeProfileHeader
+            .padding(.top, Self.rowSpacing + 10)
             .sessionsScreenListRow()
 
         if profilesAreExpanded {
             activeProfileOptionRows
         }
-
-        topLevelUtilityGrid
-            .padding(.horizontal, 24)
-            .padding(.top, Self.rowSpacing + 10)
-            .sessionsScreenListRow()
 
         projectsHeader
             .padding(.top, Self.rowSpacing + 8)
@@ -337,6 +337,7 @@ struct SessionListRowsSection: View {
     let showsMessageCount: Bool
     let showsWorkspace: Bool
     var selectedSessionID: String?
+    var unreadCompletedSessionIDs: Set<String> = []
     let actions: SessionListRowActions
 
     var body: some View {
@@ -457,6 +458,7 @@ struct SessionListRowsSection: View {
                 session: session,
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
+                showsUnreadCompletionIndicator: unreadCompletedSessionIDs.contains(session.id),
                 isViewingCachedData: viewModel.isViewingCachedData,
                 nestingLevel: nestingLevel
             )

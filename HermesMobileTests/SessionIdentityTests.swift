@@ -121,6 +121,60 @@ final class SessionIdentityTests: XCTestCase {
         )
     }
 
+    func testSessionRowAccessibilityStateLabelsIncludeUnreadCompletionWhenInactive() {
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: SessionSummary(sessionId: "completed"),
+                isViewingCachedData: false,
+                showsUnreadCompletionIndicator: true
+            ),
+            ["Unread"]
+        )
+
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: SessionSummary(sessionId: "active", activeStreamId: "stream-123"),
+                isViewingCachedData: false,
+                showsUnreadCompletionIndicator: true
+            ),
+            ["Streaming"]
+        )
+    }
+
+
+
+    func testSessionRowActivityIndicatorGivesActiveStatePrecedenceOverUnreadCompletion() {
+        XCTAssertEqual(
+            SessionRowView.activityIndicatorKind(isActive: true, showsUnreadCompletion: true),
+            .active
+        )
+        XCTAssertEqual(
+            SessionRowView.activityIndicatorKind(isActive: false, showsUnreadCompletion: true),
+            .unreadCompletion
+        )
+        XCTAssertEqual(
+            SessionRowView.activityIndicatorKind(isActive: false, showsUnreadCompletion: false),
+            .hidden
+        )
+    }
+
+    func testUnreadCompletionPolicySuppressesOnlyVisibleSession() {
+        XCTAssertEqual(
+            SessionUnreadCompletionPolicy.unreadSessionIDs(
+                from: ["visible", "background"],
+                visibleSessionID: "visible"
+            ),
+            ["background"]
+        )
+        XCTAssertEqual(
+            SessionUnreadCompletionPolicy.unreadSessionIDs(
+                from: ["visible", "background"],
+                visibleSessionID: nil
+            ),
+            ["visible", "background"]
+        )
+    }
+
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

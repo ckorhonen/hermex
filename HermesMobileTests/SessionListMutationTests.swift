@@ -554,11 +554,17 @@ final class SessionListMutationTests: XCTestCase {
 
         await viewModel.load()
         XCTAssertEqual(viewModel.sessions.first?.activeStreamId, "stream-123")
+        let monitoredSessionIDs = SessionListViewModel.monitorSessionIDs(in: viewModel.sessions)
 
-        let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-123"])
+        let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: ["stream-123"],
+            sessionIDs: monitoredSessionIDs
+        )
 
         XCTAssertEqual(refreshResult, .reloaded)
         XCTAssertNil(viewModel.sessions.first?.activeStreamId)
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), Set(["session-streaming"]))
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), [])
         XCTAssertEqual(requestPaths, ["/api/sessions", "/api/chat/stream/status", "/api/sessions"])
     }
 
@@ -604,6 +610,61 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testMonitoredSessionStatusReloadsWhenVisibleIdleSessionBecomesActive() async throws {
+        var loadCount = 0
+        var statusCount = 0
+        var requestPaths: [String] = []
+        let viewModel = try makeViewModel { request in
+            let path = request.url?.path ?? "nil"
+            requestPaths.append(path)
+
+            switch path {
+            case "/api/sessions":
+                loadCount += 1
+                let activeStreamIDField = loadCount == 1 ? "" : #","active_stream_id":"stream-456""#
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {
+                      "session_id": "session-visible",
+                      "title": "Visible work",
+                      "archived": false\(activeStreamIDField)
+                    }
+                  ]
+                }
+                """, for: request)
+            case "/api/session/status":
+                statusCount += 1
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let sessionID = components?.queryItems?.first { $0.name == "session_id" }?.value
+                XCTAssertEqual(sessionID, "session-visible")
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-visible","agent_running":true,"active_stream_id":"stream-456"}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(path)")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        XCTAssertNil(viewModel.sessions.first?.activeStreamId)
+        let monitoredSessionIDs = SessionListViewModel.monitorSessionIDs(in: viewModel.sessions)
+
+        let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
+
+        XCTAssertEqual(refreshResult, .reloaded)
+        XCTAssertEqual(statusCount, 1)
+        XCTAssertEqual(viewModel.sessions.first?.activeStreamId, "stream-456")
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), [])
+        XCTAssertEqual(requestPaths, ["/api/sessions", "/api/session/status", "/api/sessions"])
+    }
+
+    @MainActor
     func testStreamingSessionWithoutStreamIDReloadsOncePerTransitionNotEveryRefresh() async throws {
         var loadCount = 0
         let viewModel = try makeViewModel { request in
@@ -622,6 +683,11 @@ final class SessionListMutationTests: XCTestCase {
                   ]
                 }
                 """, for: request)
+            case "/api/session/status":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-streaming","agent_running":false}"#,
+                    for: request
+                )
             case "/api/chat/stream/status":
                 return apiTestJSONResponse(
                     #"{"active":true,"stream_id":"stream-123"}"#,
@@ -637,27 +703,91 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(loadCount, 1)
         XCTAssertEqual(viewModel.sessions.first?.isStreaming, true)
         XCTAssertNil(viewModel.sessions.first?.activeStreamId)
+        let monitoredSessionIDs = SessionListViewModel.monitorSessionIDs(in: viewModel.sessions)
 
         // A row flagged `is_streaming` with no stream ID gives the monitor nothing to
         // poll. The first tick reloads once so a stale flag can clear...
-        let firstRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let firstRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(firstRefresh, .reloaded)
         XCTAssertEqual(loadCount, 2)
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), [])
 
         // ...but the 1 Hz ticks that follow must not keep re-fetching the whole list.
-        let secondRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
-        let thirdRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let secondRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
+        let thirdRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(secondRefresh, .unchanged)
         XCTAssertEqual(thirdRefresh, .unchanged)
         XCTAssertEqual(loadCount, 2)
 
         // Seeing real stream IDs again arms the one-shot reload for the next transition.
-        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-123"])
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: ["stream-123"],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(loadCount, 2)
 
-        let refreshAfterNewTransition = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let refreshAfterNewTransition = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: [],
+            sessionIDs: monitoredSessionIDs
+        )
         XCTAssertEqual(refreshAfterNewTransition, .reloaded)
         XCTAssertEqual(loadCount, 3)
+    }
+
+    @MainActor
+    func testRecentlyCompletedSessionIDsDoNotSurviveIfSessionBecomesActiveAgainBeforeConsumption() async throws {
+        var loadCount = 0
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                loadCount += 1
+                let activeField = loadCount == 2 ? "" : #","active_stream_id":"stream-123""#
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {
+                      "session_id": "session-streaming",
+                      "title": "Streaming work",
+                      "archived": false\(activeField)
+                    }
+                  ]
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":false,"stream_id":"stream-123"}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let monitoredSessionIDs = SessionListViewModel.monitorSessionIDs(in: viewModel.sessions)
+
+        let completedRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: ["stream-123"],
+            sessionIDs: monitoredSessionIDs
+        )
+        XCTAssertEqual(completedRefresh, .reloaded)
+
+        let activeAgainRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: ["stream-123"],
+            sessionIDs: monitoredSessionIDs
+        )
+        XCTAssertEqual(activeAgainRefresh, .reloaded)
+        XCTAssertEqual(viewModel.consumeRecentlyCompletedSessionIDs(), [])
     }
 
     @MainActor
