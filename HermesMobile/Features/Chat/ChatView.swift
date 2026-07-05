@@ -483,6 +483,11 @@ struct ChatView: View {
             .onChange(of: viewModel.displayTitle) { _, newTitle in
                 notifySessionTitleChange(newTitle)
             }
+            .onChange(of: session.title) {
+                // A rename made in the session list reassigns the selection this view
+                // was built from; adopt the new title so the header updates in place.
+                viewModel.applyExternalTitle(session.title)
+            }
     }
 
     private var chatPresentationContent: some View {

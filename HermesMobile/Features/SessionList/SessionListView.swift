@@ -951,6 +951,18 @@ struct SessionListView: View {
             SessionHaptics.sessionRenamed(isEnabled: isHapticsEnabled)
         }
 
+        if didRename, let sessionID = session.sessionId {
+            // Reassign a matching open selection so the already-open ChatView's
+            // `session` updates and its header adopts the new title.
+            let resolvedTitle = viewModel.sessions.first { $0.sessionId == sessionID }?.title ?? title
+            if createdSession?.sessionId == sessionID {
+                createdSession = createdSession?.replacingTitle(with: resolvedTitle)
+            }
+            if selectedDetailSession?.sessionId == sessionID {
+                selectedDetailSession = selectedDetailSession?.replacingTitle(with: resolvedTitle)
+            }
+        }
+
         return didRename
     }
 

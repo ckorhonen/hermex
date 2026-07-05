@@ -5127,6 +5127,52 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testApplyExternalTitleUpdatesDisplayTitleWithoutNetworkRequests() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTFail("External title updates must not make network requests: \(request.url?.path ?? "nil")")
+            throw URLError(.badURL)
+        }
+
+        XCTAssertEqual(viewModel.displayTitle, "Planning")
+
+        viewModel.applyExternalTitle("  Launch Notes  ")
+        XCTAssertEqual(viewModel.displayTitle, "Launch Notes")
+
+        // Blank external titles are ignored instead of resetting the header.
+        viewModel.applyExternalTitle("   ")
+        viewModel.applyExternalTitle(nil)
+        XCTAssertEqual(viewModel.displayTitle, "Launch Notes")
+    }
+
+    @MainActor
+    func testApplyExternalTitleIsIgnoredWhileResponseIsStreaming() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Name this chat")
+        XCTAssertTrue(didStart)
+        XCTAssertNotNil(viewModel.activeStreamID)
+
+        // A stale list-row title must not clobber the header mid-stream: the
+        // stream's own title events own it until the response finishes.
+        viewModel.applyExternalTitle("Stale List Title")
+        XCTAssertEqual(viewModel.displayTitle, "Planning")
+    }
+
+    @MainActor
     func testTransportErrorChecksStatusAndFinishesWhenStreamIsInactive() async throws {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false
