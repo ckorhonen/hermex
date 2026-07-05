@@ -1199,6 +1199,40 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    func testArchiveOrDeleteClearsOnlyMatchingOpenChatSelection() throws {
+        let openSession = try makeSessionSummary(
+            id: "session-abc",
+            title: "Planning",
+            pinned: false,
+            archived: false
+        )
+        let otherSession = try makeSessionSummary(
+            id: "session-def",
+            title: "Research",
+            pinned: false,
+            archived: false
+        )
+
+        XCTAssertTrue(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: "session-abc")
+        )
+        XCTAssertTrue(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: " session-abc ")
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(otherSession, afterMutating: "session-abc")
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(nil, afterMutating: "session-abc")
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: nil)
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.shouldClearSelection(openSession, afterMutating: "   ")
+        )
+    }
+
     @MainActor
     func testRenameSessionBlocksBlankTitleBeforeNetworkRequest() async throws {
         let viewModel = try makeViewModel { request in

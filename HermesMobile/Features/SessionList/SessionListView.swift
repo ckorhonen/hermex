@@ -913,6 +913,7 @@ struct SessionListView: View {
 
         if didArchive {
             SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
+            clearOpenSelectionIfNeeded(afterMutating: session)
         }
     }
 
@@ -926,6 +927,18 @@ struct SessionListView: View {
 
         if didDelete {
             SessionHaptics.sessionDeleted(isEnabled: isHapticsEnabled)
+            clearOpenSelectionIfNeeded(afterMutating: session)
+        }
+    }
+
+    /// Closes the open chat when its session was just archived or deleted, mirroring
+    /// how `handleSessionTitleChange` reassigns the matching selection on rename.
+    private func clearOpenSelectionIfNeeded(afterMutating session: SessionSummary) {
+        if SessionListOpenSelectionPolicy.shouldClearSelection(createdSession, afterMutating: session.sessionId) {
+            createdSession = nil
+        }
+        if SessionListOpenSelectionPolicy.shouldClearSelection(selectedDetailSession, afterMutating: session.sessionId) {
+            selectedDetailSession = nil
         }
     }
 
@@ -1329,6 +1342,27 @@ private struct PendingNewChatRoute: Identifiable, Hashable {
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+    }
+}
+
+/// Decides whether archiving/deleting a session must also close the chat currently
+/// open for it (split-view detail column or pushed navigation destination), so a
+/// removed session never stays open as a stale, orphaned transcript. Extracted from
+/// `SessionListView` so the rule is unit-testable without SwiftUI state (same pattern
+/// as `DefaultProfileSelection`).
+enum SessionListOpenSelectionPolicy {
+    static func shouldClearSelection(
+        _ selection: SessionSummary?,
+        afterMutating rawMutatedSessionID: String?
+    ) -> Bool {
+        guard let selectionID = selection?.sessionId,
+              let mutatedSessionID = rawMutatedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !mutatedSessionID.isEmpty
+        else {
+            return false
+        }
+
+        return selectionID == mutatedSessionID
     }
 }
 
