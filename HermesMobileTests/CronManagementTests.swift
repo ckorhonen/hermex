@@ -347,11 +347,100 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertTrue(didPause)
         XCTAssertEqual(viewModel.job.status, .paused)
         XCTAssertNil(viewModel.runningElapsed)
-        guard case .upsert(let updatedJob) = viewModel.lastMutation else {
-            XCTFail("Expected upsert mutation.")
+        guard case .upsertWithRunningState(let updatedJob, let jobID, let runningElapsed) = viewModel.lastMutation else {
+            XCTFail("Expected running-state update mutation.")
             return
         }
         XCTAssertEqual(updatedJob.jobId, "job123")
+        XCTAssertEqual(jobID, "job123")
+        XCTAssertNil(runningElapsed)
+    }
+
+    @MainActor
+    func testTaskDetailViewModelRunNowPublishesRunningMutation() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/run")
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "job": {
+                "id": "job123",
+                "name": "Digest",
+                "prompt": "Run it",
+                "schedule": {"kind": "cron", "expr": "0 7 * * *"},
+                "enabled": true,
+                "state": "running"
+              }
+            }
+            """, for: request)
+        }
+        let viewModel = TaskDetailViewModel(
+            job: try decodeCronJob(#"{"id": "job123", "name": "Digest"}"#),
+            runningElapsed: nil,
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        let didRun = await viewModel.runNow()
+
+        XCTAssertTrue(didRun)
+        XCTAssertEqual(viewModel.runningElapsed, 0)
+        guard case .upsertWithRunningState(let updatedJob, let jobID, let runningElapsed) = viewModel.lastMutation else {
+            XCTFail("Expected running-state update mutation.")
+            return
+        }
+        XCTAssertEqual(updatedJob.jobId, "job123")
+        XCTAssertEqual(jobID, "job123")
+        XCTAssertEqual(runningElapsed, 0)
+    }
+
+    @MainActor
+    func testTaskDetailViewModelRunNowWithoutJobPublishesRunningStateOnly() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/run")
+            return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+        }
+        let viewModel = TaskDetailViewModel(
+            job: try decodeCronJob(#"{"id": "job123", "name": "Digest"}"#),
+            runningElapsed: nil,
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        let didRun = await viewModel.runNow()
+
+        XCTAssertTrue(didRun)
+        XCTAssertEqual(viewModel.runningElapsed, 0)
+        XCTAssertEqual(viewModel.lastMutation, .setRunningState(jobID: "job123", runningElapsed: 0))
+    }
+
+    @MainActor
+    func testTasksViewModelApplyRunningMutationUpdatesRunningCount() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/crons":
+                return apiTestJSONResponse("""
+                {"jobs":[{"id":"job123","name":"Digest"}]}
+                """, for: request)
+            case "/api/crons/status":
+                return apiTestJSONResponse(#"{"running_jobs":{}}"#, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+        await viewModel.load()
+        let job = try XCTUnwrap(viewModel.jobs.first)
+
+        viewModel.apply(.upsertWithRunningState(job, jobID: "job123", runningElapsed: 0))
+        XCTAssertEqual(viewModel.activeRunningCount, 1)
+        XCTAssertEqual(viewModel.runningElapsed(for: job), 0)
+
+        viewModel.apply(.upsertWithRunningState(job, jobID: "job123", runningElapsed: nil))
+        XCTAssertEqual(viewModel.activeRunningCount, 0)
+        XCTAssertNil(viewModel.runningElapsed(for: job))
     }
 
     @MainActor

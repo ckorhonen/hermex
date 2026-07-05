@@ -3496,14 +3496,11 @@ final class ChatViewModel {
 
     private func handleBackgroundResults(_ results: [BackgroundResult]) {
         for result in results {
-            let prompt: String
-            if let taskID = result.taskId,
-               let trackedPrompt = backgroundPromptsByTaskID.removeValue(forKey: taskID) {
-                prompt = trackedPrompt
-            } else if let resultPrompt = result.prompt, !resultPrompt.isEmpty {
-                prompt = resultPrompt
-            } else {
-                prompt = "Background task"
+            guard let taskID = result.taskId else { continue }
+            guard let prompt = backgroundPromptsByTaskID.removeValue(forKey: taskID) else {
+                // Background status can include completed work for the same parent
+                // session from another client. Only render task IDs this view started.
+                continue
             }
 
             appendLocalAssistantMessage(

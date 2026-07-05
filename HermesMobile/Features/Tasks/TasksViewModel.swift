@@ -3,6 +3,8 @@ import Observation
 
 enum CronJobListMutation: Equatable {
     case upsert(CronJob)
+    case upsertWithRunningState(CronJob, jobID: String, runningElapsed: Double?)
+    case setRunningState(jobID: String, runningElapsed: Double?)
     case delete(jobID: String)
 }
 
@@ -98,6 +100,13 @@ final class TasksViewModel {
         switch mutation {
         case .upsert(let job):
             upsert(job)
+        case .upsertWithRunningState(let job, let jobID, let runningElapsed):
+            upsert(job)
+            setRunningElapsed(runningElapsed, for: jobID)
+            jobs.sort(by: sortJobs)
+        case .setRunningState(let jobID, let runningElapsed):
+            setRunningElapsed(runningElapsed, for: jobID)
+            jobs.sort(by: sortJobs)
         case .delete(let jobID):
             jobs.removeAll { $0.jobId == jobID }
             runningJobs.removeValue(forKey: jobID)
@@ -124,6 +133,14 @@ final class TasksViewModel {
             jobs.append(job)
         }
         jobs.sort(by: sortJobs)
+    }
+
+    private func setRunningElapsed(_ runningElapsed: Double?, for jobID: String) {
+        if let runningElapsed {
+            runningJobs[jobID] = runningElapsed
+        } else {
+            runningJobs.removeValue(forKey: jobID)
+        }
     }
 
     private func sortJobs(_ left: CronJob, _ right: CronJob) -> Bool {

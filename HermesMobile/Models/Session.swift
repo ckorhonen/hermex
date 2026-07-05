@@ -260,16 +260,16 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         activeStreamId = detail.activeStreamId
         isStreaming = nil
         isCliSession = detail.isCliSession
-        sourceTag = nil
-        sessionSource = nil
-        sourceLabel = nil
-        matchType = nil
-        parentSessionId = nil
-        relationshipType = nil
-        parentTitle = nil
-        readOnly = nil
-        isReadOnly = nil
-        sidebarReferenceSessions = nil
+        sourceTag = detail.sourceTag
+        sessionSource = detail.sessionSource
+        sourceLabel = detail.sourceLabel
+        matchType = detail.matchType
+        parentSessionId = detail.parentSessionId
+        relationshipType = detail.relationshipType
+        parentTitle = detail.parentTitle
+        readOnly = detail.readOnly
+        isReadOnly = detail.isReadOnly
+        sidebarReferenceSessions = detail.sidebarReferenceSessions
     }
 
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
@@ -444,6 +444,16 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     let compressionAnchorVisibleIdx: Int?
     let compressionAnchorMessageKey: CompressionAnchorMessageKey?
     let compressionAnchorSummary: String?
+    let sourceTag: String?
+    let sessionSource: String?
+    let sourceLabel: String?
+    let matchType: String?
+    let parentSessionId: String?
+    let relationshipType: String?
+    let parentTitle: String?
+    let readOnly: Bool?
+    let isReadOnly: Bool?
+    let sidebarReferenceSessions: [SessionSummary]?
 
     enum CodingKeys: String, CodingKey {
         case sessionId
@@ -484,6 +494,16 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         case snakeCasedCompressionAnchorVisibleIdx = "compression_anchor_visible_idx"
         case snakeCasedCompressionAnchorMessageKey = "compression_anchor_message_key"
         case snakeCasedCompressionAnchorSummary = "compression_anchor_summary"
+        case sourceTag
+        case sessionSource
+        case sourceLabel
+        case matchType
+        case parentSessionId
+        case relationshipType
+        case parentTitle
+        case readOnly
+        case isReadOnly
+        case sidebarReferenceSessions
     }
 
     init(from decoder: Decoder) throws {
@@ -532,6 +552,42 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
             )) ?? nil)
         compressionAnchorSummary = container.decodeLossyStringIfPresent(forKey: .compressionAnchorSummary)
             ?? container.decodeLossyStringIfPresent(forKey: .snakeCasedCompressionAnchorSummary)
+        sourceTag = container.decodeLossyStringIfPresent(forKey: .sourceTag)
+        sessionSource = container.decodeLossyStringIfPresent(forKey: .sessionSource)
+        sourceLabel = container.decodeLossyStringIfPresent(forKey: .sourceLabel)
+        matchType = container.decodeLossyStringIfPresent(forKey: .matchType)
+        parentSessionId = container.decodeLossyStringIfPresent(forKey: .parentSessionId)
+        relationshipType = container.decodeLossyStringIfPresent(forKey: .relationshipType)
+        parentTitle = container.decodeLossyStringIfPresent(forKey: .parentTitle)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+        isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
+        sidebarReferenceSessions = Self.decodeSessionSummariesTolerantly(
+            from: container,
+            forKey: .sidebarReferenceSessions
+        )
+    }
+
+    private static func decodeSessionSummariesTolerantly(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> [SessionSummary]? {
+        if let direct = try? container.decodeIfPresent([SessionSummary].self, forKey: key) {
+            return direct
+        }
+
+        guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: key) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let decoded = values.compactMap { value -> SessionSummary? in
+            guard let data = try? JSONEncoder().encode(value) else { return nil }
+            return try? decoder.decode(SessionSummary.self, from: data)
+        }
+
+        return decoded.isEmpty && !values.isEmpty ? nil : decoded
     }
 
     private static func decodeMessagesTolerantly(

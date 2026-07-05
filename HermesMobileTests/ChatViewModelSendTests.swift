@@ -1080,6 +1080,57 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundPollingIgnoresUntrackedTaskResults() async throws {
+        let backgroundStatusRequests = LockedCounter()
+        let pollingIntervals = ChatPollingIntervals(
+            approvalNanoseconds: 100_000_000,
+            clarificationNanoseconds: 100_000_000,
+            backgroundNanoseconds: 100_000_000
+        )
+        let viewModel = try makeViewModel(pollingIntervals: pollingIntervals) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/background":
+                return apiTestJSONResponse(#"{"task_id": "task-1", "stream_id": "stream-bg", "session_id": "background-1"}"#, for: request)
+            case "/api/background/status":
+                _ = backgroundStatusRequests.increment()
+                return apiTestJSONResponse("""
+                {
+                  "results": [
+                    {"task_id": "other-task", "prompt": "Other prompt", "answer": "Other answer"},
+                    {"task_id": "task-1", "prompt": "Tracked server prompt", "answer": "Tracked answer"}
+                  ]
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run the installer")
+        XCTAssertTrue(didStart)
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "background")),
+            args: "audit tests"
+        )
+        XCTAssertEqual(result, .executed(message: "Background task started. I'll add the result here when it completes."))
+
+        try await waitUntil {
+            backgroundStatusRequests.count > 0 &&
+                viewModel.messages.contains { $0.content?.contains("Tracked answer") == true }
+        }
+
+        XCTAssertTrue(viewModel.messages.contains { $0.content?.contains("audit tests") == true })
+        XCTAssertFalse(viewModel.messages.contains { $0.content?.contains("Other answer") == true })
+        XCTAssertFalse(viewModel.messages.contains { $0.content?.contains("Other prompt") == true })
+
+        viewModel.cleanupPollingTasks()
+    }
+
+    @MainActor
     func testApprovalForDifferentSessionDoesNotRenderOverCurrentChat() async throws {
         let viewModel = try makeViewModel { request in
             XCTAssertEqual(request.url?.path, "/api/chat/start")
