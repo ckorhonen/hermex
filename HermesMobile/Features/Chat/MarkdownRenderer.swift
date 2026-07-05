@@ -563,10 +563,6 @@ private struct ChatCodeBlock: View {
         ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
     }
 
-    private var effectiveCodePointSize: CGFloat {
-        scaledCodePointSize * CGFloat(effectiveFontScale)
-    }
-
     private func scaledSpacing(_ value: CGFloat) -> CGFloat {
         ChatTranscriptSpacing.scaled(value, fontScale: effectiveFontScale)
     }
@@ -581,13 +577,13 @@ private struct ChatCodeBlock: View {
             HighlightedCodeBlockText(
                 content: highlightedCode,
                 wraps: wrapsCodeBlockLines,
-                pointSize: effectiveCodePointSize
+                fontScale: effectiveFontScale
             )
         } else {
             PlainCodeBlockText(
                 content: content,
                 wraps: wrapsCodeBlockLines,
-                pointSize: effectiveCodePointSize
+                fontScale: effectiveFontScale
             )
         }
     }
@@ -685,7 +681,9 @@ private struct PlainCodeBlockText: View {
     /// `Text` so SwiftUI soft-wraps the line; when `false`, they stay side by side
     /// in an `HStack` for the horizontal-scroll layout.
     var wraps = false
-    var pointSize: CGFloat = 12
+    var fontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale
+
+    @ScaledMetric(relativeTo: .caption) private var scaledCodePointSize: CGFloat = 12
 
     private var lines: [MarkdownPlainCodeLine] {
         MarkdownPlainCodeFormatter.lines(in: content)
@@ -708,8 +706,12 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: pointSize, design: .monospaced))
+        .font(.system(size: effectiveCodePointSize, design: .monospaced))
         .foregroundStyle(ZoraBrand.paper.opacity(0.88))
+    }
+
+    private var effectiveCodePointSize: CGFloat {
+        scaledCodePointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(fontScale))
     }
 
     private func combinedText(for line: MarkdownPlainCodeLine) -> Text {
@@ -724,7 +726,9 @@ private struct HighlightedCodeBlockText: View {
     /// See `PlainCodeBlockText.wraps`; the concatenated `Text` preserves each
     /// segment's syntax-highlight attributes.
     var wraps = false
-    var pointSize: CGFloat = 12
+    var fontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale
+
+    @ScaledMetric(relativeTo: .caption) private var scaledCodePointSize: CGFloat = 12
 
     private var lines: [MarkdownAttributedCodeLine] {
         MarkdownAttributedCodeFormatter.lines(in: content)
@@ -747,7 +751,11 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: pointSize, design: .monospaced))
+        .font(.system(size: effectiveCodePointSize, design: .monospaced))
+    }
+
+    private var effectiveCodePointSize: CGFloat {
+        scaledCodePointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(fontScale))
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
