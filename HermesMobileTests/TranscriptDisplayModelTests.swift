@@ -731,3 +731,75 @@ extension TranscriptCardExpansionStoreTests {
         XCTAssertNil(store.userToggledExpansion(forKey: "reasoning:loose:live"))
     }
 }
+
+/// Wall-clock measurements for the transcript data hot path (issue #32).
+///
+/// During streaming, every paced word-drain tick mutates `messages`, which
+/// rebuilds `displayedTranscriptMessages` and `displayedReasoningGroups` over
+/// the full loaded conversation. These measure blocks quantify one rebuild
+/// over a 1,000-message conversation so per-tick cost regressions show up as
+/// numbers instead of scroll-feel anecdotes.
+final class TranscriptDataHotPathPerformanceTests: XCTestCase {
+    private static let thousandMessageConversation: [ChatMessage] = makeConversation(turnCount: 250)
+
+    /// 250 turns × 4 messages (user, assistant+reasoning, tool result, assistant)
+    /// = 1,000 loaded messages with realistic content lengths.
+    private static func makeConversation(turnCount: Int) -> [ChatMessage] {
+        let userText = String(repeating: "Please refactor the session list so it stays in sync. ", count: 4)
+        let assistantText = String(repeating: "Here is the plan: extract the sync seam, add tests, then wire the sidebar. ", count: 8)
+        let reasoningText = String(repeating: "The sidebar drifts because renames bypass the store. ", count: 6)
+
+        var messages: [ChatMessage] = []
+        messages.reserveCapacity(turnCount * 4)
+        for turn in 0..<turnCount {
+            let base = turn * 4
+            messages.append(ChatMessage(
+                role: "user", content: userText, timestamp: Double(base), messageId: "user-\(turn)"
+            ))
+            messages.append(ChatMessage(
+                role: "assistant", content: assistantText, timestamp: Double(base + 1),
+                messageId: "assistant-\(turn)-a", reasoning: reasoningText
+            ))
+            messages.append(ChatMessage(
+                role: "tool", content: #"{"success":true,"diff":"..."}"#, timestamp: Double(base + 2),
+                messageId: "tool-\(turn)", toolCallId: "call-\(turn)"
+            ))
+            messages.append(ChatMessage(
+                role: "assistant", content: assistantText, timestamp: Double(base + 3),
+                messageId: "assistant-\(turn)-b"
+            ))
+        }
+        return messages
+    }
+
+    func testMeasureTranscriptMessagesRebuildOverThousandMessages() {
+        let messages = Self.thousandMessageConversation
+
+        measure {
+            for _ in 0..<10 {
+                _ = ChatViewModel.transcriptMessages(from: messages, messageOffset: 40)
+            }
+        }
+    }
+
+    func testMeasureReasoningDisplayGroupsRebuildOverThousandMessages() {
+        let messages = Self.thousandMessageConversation
+        let archived = (0..<50).map { index in
+            ReasoningGroup(
+                id: "archived-\(index)",
+                anchorMessageID: "assistant-\(index)-a",
+                text: String(repeating: "Archived reasoning kept across reloads. ", count: 6)
+            )
+        }
+
+        measure {
+            for _ in 0..<10 {
+                _ = ChatViewModel.reasoningDisplayGroups(
+                    messages: messages,
+                    messageOffset: 40,
+                    archivedGroups: archived
+                )
+            }
+        }
+    }
+}
