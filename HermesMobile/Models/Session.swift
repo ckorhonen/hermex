@@ -561,7 +561,33 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         parentTitle = container.decodeLossyStringIfPresent(forKey: .parentTitle)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
         isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
-        sidebarReferenceSessions = try? container.decodeIfPresent([SessionSummary].self, forKey: .sidebarReferenceSessions)
+        sidebarReferenceSessions = Self.decodeSessionSummariesTolerantly(
+            from: container,
+            forKey: .sidebarReferenceSessions
+        )
+    }
+
+    private static func decodeSessionSummariesTolerantly(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> [SessionSummary]? {
+        if let direct = try? container.decodeIfPresent([SessionSummary].self, forKey: key) {
+            return direct
+        }
+
+        guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: key) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let decoded = values.compactMap { value -> SessionSummary? in
+            guard let data = try? JSONEncoder().encode(value) else { return nil }
+            return try? decoder.decode(SessionSummary.self, from: data)
+        }
+
+        return decoded.isEmpty && !values.isEmpty ? nil : decoded
     }
 
     private static func decodeMessagesTolerantly(

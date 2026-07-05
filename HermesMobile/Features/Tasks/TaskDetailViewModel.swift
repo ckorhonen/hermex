@@ -182,9 +182,9 @@ final class TaskDetailViewModel {
                 if let updatedRelatedSession = updatedJob.relatedSession {
                     relatedSession = updatedRelatedSession
                 }
-                lastMutation = listMutation(for: updatedJob, runningElapsedMutation: runningElapsedMutation)
+                lastMutation = listMutation(for: updatedJob, jobID: jobID, runningElapsedMutation: runningElapsedMutation)
             } else if case .set = runningElapsedMutation {
-                lastMutation = listMutation(for: job, runningElapsedMutation: runningElapsedMutation)
+                lastMutation = listMutation(for: nil, jobID: jobID, runningElapsedMutation: runningElapsedMutation)
             }
             return true
         } catch {
@@ -195,14 +195,19 @@ final class TaskDetailViewModel {
     }
 
     private func listMutation(
-        for job: CronJob,
+        for job: CronJob?,
+        jobID: String,
         runningElapsedMutation: RunningElapsedMutation
     ) -> CronJobListMutation {
         switch runningElapsedMutation {
         case .unchanged:
+            guard let job else { return .setRunningState(jobID: jobID, runningElapsed: nil) }
             return .upsert(job)
         case .set(let runningElapsed):
-            return .upsertWithRunningState(job, runningElapsed: runningElapsed)
+            if let job {
+                return .upsertWithRunningState(job, jobID: jobID, runningElapsed: runningElapsed)
+            }
+            return .setRunningState(jobID: jobID, runningElapsed: runningElapsed)
         }
     }
 

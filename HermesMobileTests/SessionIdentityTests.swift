@@ -221,7 +221,8 @@ final class SessionIdentityTests: XCTestCase {
               "session_source": "subagent",
               "source_tag": "subagent",
               "sidebar_reference_sessions": [
-                {"session_id": "parent-1", "title": "Parent chat"}
+                {"session_id": "parent-1", "title": "Parent chat"},
+                7
               ]
             }
             """.utf8)
