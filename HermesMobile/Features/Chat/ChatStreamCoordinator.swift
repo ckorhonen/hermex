@@ -96,6 +96,13 @@ final class ChatStreamCoordinator {
     // transcript load so a concurrent cancel/completion during the load can't be
     // double-finalized (PR #266 review #2).
     private var runGeneration = 0
+    // Bumped every time a new EventSource is created. The transport can have
+    // already dispatched a callback when stop() lands, so a replaced
+    // connection's late events must be dropped instead of mutating the state
+    // of the connection that superseded it. Distinct from runGeneration: a
+    // normal completion bumps runGeneration but the same connection's
+    // trailing stream_end must still be handled.
+    private var connectionGeneration = 0
 
     init(
         client: APIClient,
@@ -147,13 +154,16 @@ final class ChatStreamCoordinator {
             recoveryState: recoveryState
         )
         startLiveActivity(streamID: streamID)
+        connectionGeneration &+= 1
+        let connection = connectionGeneration
         streamClient.start(
             url: client.chatStreamURL(
                 streamID: streamID,
                 replayAfterSeq: replayAfterSeq
             )
         ) { [weak self] event in
-            self?.handle(event)
+            guard let self, self.connectionGeneration == connection else { return }
+            self.handle(event)
         }
         delegate?.streamCoordinatorStartAuxiliaryMonitoring()
     }
