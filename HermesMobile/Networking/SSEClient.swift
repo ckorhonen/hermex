@@ -375,32 +375,37 @@ private struct DonePayload: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         event = DoneStreamEvent(
-            usage: try Self.decodeUsage(from: container),
-            session: try Self.decodeSession(from: container)
+            usage: Self.decodeUsage(from: container),
+            session: Self.decodeSession(from: container)
         )
     }
 
+    // A malformed `usage` or `session` block must not discard the whole
+    // completion event — the other half still carries the turn's final state.
     private static func decodeUsage(
         from container: KeyedDecodingContainer<CodingKeys>
-    ) throws -> ContextWindowSnapshot? {
+    ) -> ContextWindowSnapshot? {
         guard container.contains(.usage) else {
             return nil
         }
 
-        return try container.decodeIfPresent(ContextWindowSnapshot.self, forKey: .usage)
+        return (try? container.decodeIfPresent(ContextWindowSnapshot.self, forKey: .usage)) ?? nil
     }
 
-    private static func decodeSession(from container: KeyedDecodingContainer<CodingKeys>) throws -> SessionDetail? {
+    private static func decodeSession(from container: KeyedDecodingContainer<CodingKeys>) -> SessionDetail? {
         guard container.contains(.session),
-              let value = try container.decodeIfPresent(JSONValue.self, forKey: .session)
+              let value = (try? container.decodeIfPresent(JSONValue.self, forKey: .session)) ?? nil
         else {
             return nil
         }
 
-        let data = try JSONEncoder().encode(value)
+        guard let data = try? JSONEncoder().encode(value) else {
+            return nil
+        }
+
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(SessionDetail.self, from: data)
+        return try? decoder.decode(SessionDetail.self, from: data)
     }
 }
 

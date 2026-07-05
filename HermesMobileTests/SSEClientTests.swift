@@ -241,6 +241,52 @@ final class SSEClientTests: XCTestCase {
         XCTAssertNil(payload.args)
     }
 
+    func testDoneEventToleratesMalformedUsageFields() {
+        let event = SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session":{"session_id":"abc123"},"usage":{"context_length":"unknown","input_tokens":1e20}}"#
+        )
+
+        guard case .done(let payload) = event else {
+            XCTFail("Expected done event, got \(event)")
+            return
+        }
+
+        XCTAssertEqual(payload.session?.sessionId, "abc123")
+        XCTAssertNil(payload.usage?.contextLength)
+        XCTAssertNil(payload.usage?.inputTokens)
+    }
+
+    func testDoneEventToleratesNonObjectUsage() {
+        let event = SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session":{"session_id":"abc123"},"usage":"n/a"}"#
+        )
+
+        guard case .done(let payload) = event else {
+            XCTFail("Expected done event, got \(event)")
+            return
+        }
+
+        XCTAssertEqual(payload.session?.sessionId, "abc123")
+        XCTAssertNil(payload.usage)
+    }
+
+    func testDoneEventToleratesMalformedSession() {
+        let event = SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"session":"gone","usage":{"input_tokens":1200}}"#
+        )
+
+        guard case .done(let payload) = event else {
+            XCTFail("Expected done event, got \(event)")
+            return
+        }
+
+        XCTAssertNil(payload.session)
+        XCTAssertEqual(payload.usage?.inputTokens, 1200)
+    }
+
     func testDecodesDoneEventAsStreamCompletionSignal() {
         let event = SSEEventDecoder.decode(
             eventType: "done",
@@ -431,16 +477,24 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(event, .transportError("The stream returned a malformed completion event."))
     }
 
-    func testMalformedDoneUsagePayloadSurfacesTransportError() {
+    /// A parseable done event with a drifted `usage` block still signals
+    /// completion — only unparseable JSON (above) is a transport error.
+    func testMalformedDoneUsagePayloadStillCompletesStream() {
         let event = SSEEventDecoder.decode(eventType: "done", data: #"{"usage":"bad"}"#)
 
-        XCTAssertEqual(event, .transportError("The stream returned a malformed completion event."))
+        XCTAssertEqual(event, .done(DoneStreamEvent(usage: nil, session: nil)))
     }
 
-    func testMalformedDoneSessionPayloadSurfacesTransportError() {
+    func testMalformedDoneSessionPayloadStillCompletesStream() {
         let event = SSEEventDecoder.decode(eventType: "done", data: #"{"session":1,"usage":{}}"#)
 
-        XCTAssertEqual(event, .transportError("The stream returned a malformed completion event."))
+        guard case .done(let payload) = event else {
+            XCTFail("Expected done event, got \(event)")
+            return
+        }
+
+        XCTAssertNil(payload.session)
+        XCTAssertNotNil(payload.usage)
     }
 
     func testMalformedErrorPayloadSurfacesExplicitError() {
