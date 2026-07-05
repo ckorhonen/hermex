@@ -5824,6 +5824,10 @@ final class ChatViewModelSendTests: XCTestCase {
         }
 
         await viewModel.loadMessages()
+        // Simulate a user expanding a reasoning card on the response that is
+        // about to be regenerated (positional key at the truncated slot).
+        let preTruncateExpansionKey = "reasoning:transcript:8:0"
+        viewModel.cardExpansionStore.setUserToggledExpansion(true, forKey: preTruncateExpansionKey)
         let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[3], visibleIndex: 3))
         let didRegenerate = await viewModel.regenerateAssistantResponse(context)
 
@@ -5832,6 +5836,13 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(startedMessage, "Second question")
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["First question", "First answer", "Second question"])
         XCTAssertEqual(viewModel.activeStreamID, "stream-regen")
+
+        // Card expand toggles are keyed positionally; the regenerated response
+        // lands in the truncated slot, so stale toggles must not carry over.
+        XCTAssertNil(
+            viewModel.cardExpansionStore.userToggledExpansion(forKey: preTruncateExpansionKey),
+            "A toggle recorded before regenerate must not apply to the replacement response"
+        )
         XCTAssertEqual(streamClient.startedURLs.count, 1)
     }
 

@@ -17,6 +17,46 @@ private struct ChatTranscriptFontScaleKey: EnvironmentKey {
     static let defaultValue = ChatTranscriptDisplaySettings.defaultFontScale
 }
 
+/// Remembers per-card expand/collapse toggles across the view-identity churn
+/// the transcript performs while streaming: a live "Thinking"/tool card is a
+/// different view (and different group id) from the archived card it becomes
+/// on finalize, so `@State` inside the card cannot survive that transition —
+/// an expanded card would snap shut the moment the turn completes. Keys are
+/// derived from the owning row's stable `renderID` plus the card's position.
+/// Owned per-session by `ChatViewModel`.
+@MainActor
+@Observable
+final class TranscriptCardExpansionStore {
+    private var userToggledByKey: [String: Bool] = [:]
+
+    func userToggledExpansion(forKey key: String) -> Bool? {
+        userToggledByKey[key]
+    }
+
+    func setUserToggledExpansion(_ value: Bool, forKey key: String) {
+        userToggledByKey[key] = value
+    }
+
+    /// Keys are positional (renderID + index), so any flow that truncates the
+    /// transcript and regrows it (edit, regenerate, /undo, /retry) must reset
+    /// the store — otherwise a toggle made on the *old* content at a slot is
+    /// silently applied to the *new* content that lands in the same slot.
+    func reset() {
+        userToggledByKey = [:]
+    }
+}
+
+private struct TranscriptCardExpansionStoreKey: EnvironmentKey {
+    static let defaultValue: TranscriptCardExpansionStore? = nil
+}
+
+extension EnvironmentValues {
+    var transcriptCardExpansionStore: TranscriptCardExpansionStore? {
+        get { self[TranscriptCardExpansionStoreKey.self] }
+        set { self[TranscriptCardExpansionStoreKey.self] = newValue }
+    }
+}
+
 extension EnvironmentValues {
     var chatTranscriptFontScale: Double {
         get { self[ChatTranscriptFontScaleKey.self] }
@@ -394,9 +434,15 @@ struct ChatTranscriptView: View {
     private var liveResponseBlocks: some View {
         if activeStreamID != nil {
             if showsThinkingAndToolCards {
+                // Like the anchored path, a loose live card is keyed with the
+                // index it will occupy once archived, so a mid-stream toggle
+                // survives the live → archived transition.
                 if hasLiveReasoningText,
                    !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(text: liveReasoningText)
+                    ReasoningBlockView(
+                        text: liveReasoningText,
+                        expansionKey: "reasoning:loose:\(reasoningGroups.filter { $0.anchorMessageID == nil }.count)"
+                    )
                 }
 
                 if !liveToolCalls.isEmpty,
@@ -405,7 +451,8 @@ struct ChatTranscriptView: View {
                         group: ToolCallGroup.live(
                             anchorMessageID: toolCallAnchorMessageID,
                             toolCalls: liveToolCalls
-                        )
+                        ),
+                        expansionKey: "tools:loose:\(completedToolCallGroupsForAnchor(nil).count)"
                     )
                 }
             }
@@ -481,8 +528,12 @@ struct ChatTranscriptView: View {
     @ViewBuilder
     private func reasoningBlocks(anchorMessageID: String?) -> some View {
         if showsThinkingAndToolCards {
-            ForEach(reasoningGroups.filter { $0.anchorMessageID == anchorMessageID }) { group in
-                ReasoningBlockView(text: group.text)
+            let groups = reasoningGroups.filter { $0.anchorMessageID == anchorMessageID }
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                ReasoningBlockView(
+                    text: group.text,
+                    expansionKey: "reasoning:loose:\(index)"
+                )
             }
         }
     }
@@ -490,8 +541,12 @@ struct ChatTranscriptView: View {
     @ViewBuilder
     private func toolCallGroups(anchorMessageID: String?) -> some View {
         if showsThinkingAndToolCards {
-            ForEach(completedToolCallGroupsForAnchor(anchorMessageID)) { group in
-                ToolActivityGroupView(group: group)
+            let groups = completedToolCallGroupsForAnchor(anchorMessageID)
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                ToolActivityGroupView(
+                    group: group,
+                    expansionKey: "tools:loose:\(index)"
+                )
             }
         }
     }
@@ -567,7 +622,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             if shouldRenderMessageRow(transcriptMessage.message) {
                 ChatTranscriptMessageRow(
                     message: transcriptMessage.message,
-                    rowStateID: transcriptMessage.message.id,
+                    rowStateID: transcriptMessage.bubbleStateID,
                     visibleIndex: transcriptMessage.loadedIndex,
                     actionContext: actionContext(transcriptMessage.message, transcriptMessage.loadedIndex),
                     localAttachmentPreviews: localAttachmentPreviews,
@@ -601,11 +656,24 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
         }
     }
 
+    // Expansion keys are derived from the row's stable `renderID` plus the
+    // card's position. A live card uses the index it will occupy once
+    // archived, so the toggle survives the live → archived transition (the
+    // group ids can't be used: they embed the anchor id, which changes when
+    // the streaming placeholder is finalized).
+    private var anchoredReasoningGroups: [ReasoningGroup] {
+        reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }
+    }
+
     @ViewBuilder
     private var reasoningBlocks: some View {
         if showsThinkingAndToolCards {
-            ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
-                ReasoningBlockView(text: group.text)
+            let groups = anchoredReasoningGroups
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                ReasoningBlockView(
+                    text: group.text,
+                    expansionKey: "reasoning:\(transcriptMessage.renderID):\(index)"
+                )
             }
         }
     }
@@ -613,15 +681,21 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var liveReasoningBlock: some View {
         if shouldRenderLiveReasoningBlock {
-            ReasoningBlockView(text: liveReasoningText)
+            ReasoningBlockView(
+                text: liveReasoningText,
+                expansionKey: "reasoning:\(transcriptMessage.renderID):\(anchoredReasoningGroups.count)"
+            )
         }
     }
 
     @ViewBuilder
     private var toolActivityGroups: some View {
         if showsThinkingAndToolCards {
-            ForEach(toolCallGroups) { group in
-                ToolActivityGroupView(group: group)
+            ForEach(Array(toolCallGroups.enumerated()), id: \.element.id) { index, group in
+                ToolActivityGroupView(
+                    group: group,
+                    expansionKey: "tools:\(transcriptMessage.renderID):\(index)"
+                )
             }
         }
     }
@@ -633,7 +707,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 group: ToolCallGroup.live(
                     anchorMessageID: toolCallAnchorMessageID,
                     toolCalls: liveToolCalls
-                )
+                ),
+                expansionKey: "tools:\(transcriptMessage.renderID):\(toolCallGroups.count)"
             )
         }
     }

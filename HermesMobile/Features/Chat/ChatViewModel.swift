@@ -142,6 +142,9 @@ final class ChatViewModel {
     /// session's `compression_anchor_*` metadata; nil when the session has no
     /// compaction metadata or the reference text is gated out.
     private(set) var compressionReferenceCard: CompressionReferenceCard?
+    /// Session-scoped memory for reasoning/tool card expand toggles; see
+    /// `TranscriptCardExpansionStore` for why this can't be view-local state.
+    let cardExpansionStore = TranscriptCardExpansionStore()
     @ObservationIgnored private var compressionAnchorMetadata: CompressionAnchorMetadata?
     private func applyCompressionAnchorMetadata(from session: SessionDetail?) {
         compressionAnchorMetadata = CompressionAnchorMetadata(from: session)
@@ -2772,6 +2775,7 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: error)
             }
 
+            cardExpansionStore.reset()
             await loadMessages()
             if let lastError {
                 return .unsupported(friendlyMessage: lastError.localizedDescription)
@@ -2819,6 +2823,8 @@ final class ChatViewModel {
             if let error = retryResponse.error {
                 return .unsupported(friendlyMessage: error)
             }
+
+            cardExpansionStore.reset()
 
             let lastUserText = retryResponse.lastUserText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !lastUserText.isEmpty else {
@@ -3102,6 +3108,7 @@ final class ChatViewModel {
                 liveReasoningText = ""
                 toolCallAnchorMessageID = nil
                 reasoningAnchorMessageID = nil
+                cardExpansionStore.reset()
 
                 if let modelContext {
                     do {
@@ -3205,6 +3212,7 @@ final class ChatViewModel {
                 liveReasoningText = ""
                 toolCallAnchorMessageID = nil
                 reasoningAnchorMessageID = nil
+                cardExpansionStore.reset()
 
                 if let modelContext {
                     do {
@@ -4636,6 +4644,15 @@ struct TranscriptMessage: Identifiable, Equatable {
     let message: ChatMessage
 
     var id: String { renderID }
+
+    /// Identity that scopes bubble-local view state (`.id()` on the bubble):
+    /// the streaming fade/linger machinery lives in that subtree, so this must
+    /// stay stable when the server swaps the streaming placeholder's
+    /// `messageId` for the final one — otherwise the bubble remounts and the
+    /// in-flight fade snaps at the exact moment every response completes.
+    /// `renderID` is the identity with that stability guarantee (see
+    /// `testTranscriptMessagesKeepRenderIDStableWhenServerReplacesStreamingAssistantID`).
+    var bubbleStateID: String { renderID }
 }
 
 /// Display model for the synthesized "Context compaction · Reference only" card.

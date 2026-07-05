@@ -2,11 +2,30 @@ import SwiftUI
 
 struct ReasoningBlockView: View {
     let text: String
+    /// Stable identity for the expand toggle in the session-scoped store; nil
+    /// falls back to view-local state (previews, unkeyed call sites).
+    var expansionKey: String?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptCardExpansionStore) private var expansionStore
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
-    @State private var userToggledExpansion: Bool?
+    @State private var localUserToggledExpansion: Bool?
+
+    private var userToggledExpansion: Bool? {
+        if let expansionKey, let expansionStore {
+            return expansionStore.userToggledExpansion(forKey: expansionKey)
+        }
+        return localUserToggledExpansion
+    }
+
+    private func setUserToggledExpansion(_ value: Bool) {
+        if let expansionKey, let expansionStore {
+            expansionStore.setUserToggledExpansion(value, forKey: expansionKey)
+        } else {
+            localUserToggledExpansion = value
+        }
+    }
 
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
@@ -22,7 +41,7 @@ struct ReasoningBlockView: View {
             VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
                 Button {
                     withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                        userToggledExpansion = !isExpanded
+                        setUserToggledExpansion(!isExpanded)
                     }
                 } label: {
                     header(summary: summary)

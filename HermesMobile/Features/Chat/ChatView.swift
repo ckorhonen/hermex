@@ -1104,6 +1104,7 @@ struct ChatView: View {
                 turnDiffPresentation = .file(file)
             }
         )
+        .environment(\.transcriptCardExpansionStore, viewModel.cardExpansionStore)
     }
 
     /// The chat-canvas layout direction. Driven by the manual Settings → Chat
