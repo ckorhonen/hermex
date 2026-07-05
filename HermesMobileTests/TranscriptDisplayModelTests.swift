@@ -632,3 +632,52 @@ final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
         )
     }
 }
+
+/// The expand/collapse toggle on reasoning/tool cards must survive the
+/// live → archived view transition at turn completion; view-local @State
+/// cannot (the live and archived cards are different views), so the toggles
+/// live in a session-scoped store keyed by the owning row's stable renderID.
+@MainActor
+final class TranscriptCardExpansionStoreTests: XCTestCase {
+    func testStoreRemembersTogglesPerKey() {
+        let store = TranscriptCardExpansionStore()
+
+        XCTAssertNil(store.userToggledExpansion(forKey: "reasoning:transcript:1:0"))
+
+        store.setUserToggledExpansion(true, forKey: "reasoning:transcript:1:0")
+        store.setUserToggledExpansion(false, forKey: "tools:transcript:1:0")
+
+        XCTAssertEqual(store.userToggledExpansion(forKey: "reasoning:transcript:1:0"), true)
+        XCTAssertEqual(store.userToggledExpansion(forKey: "tools:transcript:1:0"), false)
+        XCTAssertNil(store.userToggledExpansion(forKey: "reasoning:transcript:2:0"))
+    }
+
+    /// A live card is keyed with the index it will occupy once archived
+    /// (archived-count at render time), and the owning row's renderID is
+    /// stable across the streaming placeholder → final message swap — so a
+    /// mid-stream toggle is found again by the archived card after finalize.
+    func testLiveCardKeySurvivesFinalizeSwap() {
+        let streamingMessages = [
+            ChatMessage(role: "user", content: "Think hard", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "Working", timestamp: 2, messageId: "stream-1")
+        ]
+        let completedMessages = [
+            ChatMessage(role: "user", content: "Think hard", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "Done", timestamp: 2, messageId: "assistant-1")
+        ]
+
+        let liveRow = ChatViewModel.transcriptMessages(from: streamingMessages)[1]
+        let archivedRow = ChatViewModel.transcriptMessages(from: completedMessages)[1]
+
+        let store = TranscriptCardExpansionStore()
+        // Mid-stream: no archived reasoning groups yet, so the live card's index is 0.
+        store.setUserToggledExpansion(true, forKey: "reasoning:\(liveRow.renderID):0")
+
+        // After finalize the archived card is the first (index 0) group of the same row.
+        XCTAssertEqual(
+            store.userToggledExpansion(forKey: "reasoning:\(archivedRow.renderID):0"),
+            true,
+            "The archived card must find the toggle recorded while the card was live"
+        )
+    }
+}

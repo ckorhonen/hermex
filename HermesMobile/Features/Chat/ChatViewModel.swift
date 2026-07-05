@@ -142,6 +142,9 @@ final class ChatViewModel {
     /// session's `compression_anchor_*` metadata; nil when the session has no
     /// compaction metadata or the reference text is gated out.
     private(set) var compressionReferenceCard: CompressionReferenceCard?
+    /// Session-scoped memory for reasoning/tool card expand toggles; see
+    /// `TranscriptCardExpansionStore` for why this can't be view-local state.
+    let cardExpansionStore = TranscriptCardExpansionStore()
     @ObservationIgnored private var compressionAnchorMetadata: CompressionAnchorMetadata?
     private func applyCompressionAnchorMetadata(from session: SessionDetail?) {
         compressionAnchorMetadata = CompressionAnchorMetadata(from: session)
