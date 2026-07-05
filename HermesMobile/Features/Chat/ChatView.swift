@@ -93,6 +93,7 @@ struct ChatView: View {
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
+    @AppStorage(ChatTranscriptDisplaySettings.fontScaleKey) private var chatFontScale = ChatTranscriptDisplaySettings.defaultFontScale
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
 
     let session: SessionSummary
@@ -371,9 +372,26 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
+        .background(chatFontKeyboardShortcuts)
         .zoraBrandedScreen()
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var chatFontKeyboardShortcuts: some View {
+        HStack(spacing: 0) {
+            Button(String(localized: "Increase chat font size"), action: increaseChatFontScale)
+                .keyboardShortcut("+", modifiers: .command)
+
+            Button(String(localized: "Increase chat font size"), action: increaseChatFontScale)
+                .keyboardShortcut("=", modifiers: .command)
+
+            Button(String(localized: "Decrease chat font size"), action: decreaseChatFontScale)
+                .keyboardShortcut("-", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0.01)
+        .accessibilityHidden(true)
     }
 
     private var chatLifecycleContent: some View {
@@ -1082,6 +1100,14 @@ struct ChatView: View {
     /// sidebar, settings, and navigation chrome stay in the default direction.
     private var chatLayoutDirection: LayoutDirection {
         ChatTranscriptDisplaySettings.chatLayoutDirection(rtlEnabled: rtlChatLayoutEnabled)
+    }
+
+    private func increaseChatFontScale() {
+        chatFontScale = ChatTranscriptDisplaySettings.increasedFontScale(from: chatFontScale)
+    }
+
+    private func decreaseChatFontScale() {
+        chatFontScale = ChatTranscriptDisplaySettings.decreasedFontScale(from: chatFontScale)
     }
 
     private var showsScrollToBottomButton: Bool {

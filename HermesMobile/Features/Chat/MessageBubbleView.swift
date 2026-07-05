@@ -9,6 +9,8 @@ struct MessageBubbleView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
+    @AppStorage(ChatTranscriptDisplaySettings.fontScaleKey) private var chatFontScale = ChatTranscriptDisplaySettings.defaultFontScale
+    @ScaledMetric(relativeTo: .body) private var scaledBodyPointSize: CGFloat = 17
 
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
@@ -198,7 +200,7 @@ struct MessageBubbleView: View {
     private var userBubble: some View {
         VStack(alignment: .trailing, spacing: 6) {
             Text(verbatim: userBubbleText)
-                .font(AppFont.body())
+                .font(.system(size: chatBodyPointSize))
                 .lineLimit(isUserBubbleExpanded ? nil : Self.collapsedUserBubbleLineLimit)
                 .textSelection(.enabled)
 
@@ -379,6 +381,10 @@ struct MessageBubbleView: View {
 
     private var userBubbleBorder: Color {
         ZoraBrand.chatBubbleStroke
+    }
+
+    private var chatBodyPointSize: CGFloat {
+        scaledBodyPointSize * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
     }
 
     private var messageText: String {
