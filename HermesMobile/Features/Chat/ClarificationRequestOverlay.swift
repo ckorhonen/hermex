@@ -319,8 +319,8 @@ struct ClarificationRequestCard: View {
         return String(localized: "\(Self.durationText(remaining)) left")
     }
 
-    private static func durationText(_ seconds: TimeInterval) -> String {
-        let value = max(0, Int(seconds.rounded(.up)))
+    static func durationText(_ seconds: TimeInterval) -> String {
+        let value = max(0, Int(lossyTruncating: seconds.rounded(.up)) ?? 0)
         let minutes = value / 60
         let seconds = value % 60
 

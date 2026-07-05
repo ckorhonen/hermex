@@ -17,6 +17,34 @@ struct ContextWindowSnapshot: Decodable, Equatable {
         case estimatedCost = "estimated_cost"
     }
 
+    init(
+        contextLength: Int?,
+        thresholdTokens: Int?,
+        lastPromptTokens: Int?,
+        inputTokens: Int?,
+        outputTokens: Int?,
+        estimatedCost: Double?
+    ) {
+        self.contextLength = contextLength
+        self.thresholdTokens = thresholdTokens
+        self.lastPromptTokens = lastPromptTokens
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.estimatedCost = estimatedCost
+    }
+
+    /// One drifted usage field (a stringly-typed or out-of-range token count)
+    /// must not fail the snapshot — it rides along on every stream completion.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        contextLength = container.decodeLossyIntIfPresent(forKey: .contextLength)
+        thresholdTokens = container.decodeLossyIntIfPresent(forKey: .thresholdTokens)
+        lastPromptTokens = container.decodeLossyIntIfPresent(forKey: .lastPromptTokens)
+        inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
+        outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
+        estimatedCost = container.decodeLossyDoubleIfPresent(forKey: .estimatedCost)
+    }
+
     var tokensUsed: Int? {
         lastPromptTokens ?? inputTokens
     }
@@ -45,7 +73,9 @@ enum ContextWindowFormatter {
         guard let used = snapshot.tokensUsed, let total = snapshot.contextLength, total > 0 else {
             return nil
         }
-        let pct = Int((Double(used) / Double(total)) * 100)
+        guard let pct = Int(lossyTruncating: (Double(used) / Double(total)) * 100) else {
+            return nil
+        }
         return String(localized: "\(pct)% context")
     }
 

@@ -89,6 +89,8 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertEqual(AudioDurationFormatter.string(from: -5), "0:00")
         XCTAssertEqual(AudioDurationFormatter.string(from: .nan), "0:00")
         XCTAssertEqual(AudioDurationFormatter.string(from: .infinity), "0:00")
+        XCTAssertEqual(AudioDurationFormatter.string(from: 1e20), "0:00")
+        XCTAssertEqual(AudioDurationFormatter.string(from: Double(Int.max)), "0:00")
     }
 
     // MARK: - Inline player load state

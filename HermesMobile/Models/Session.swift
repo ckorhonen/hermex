@@ -273,6 +273,78 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         sidebarReferenceSessions = detail.sidebarReferenceSessions
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case sessionId
+        case title
+        case workspace
+        case model
+        case modelProvider
+        case messageCount
+        case createdAt
+        case updatedAt
+        case lastMessageAt
+        case pinned
+        case archived
+        case projectId
+        case profile
+        case inputTokens
+        case outputTokens
+        case estimatedCost
+        case activeStreamId
+        case isStreaming
+        case isCliSession
+        case sourceTag
+        case sessionSource
+        case sourceLabel
+        case matchType
+        case parentSessionId
+        case relationshipType
+        case parentTitle
+        case readOnly
+        case isReadOnly
+        case sidebarReferenceSessions
+    }
+
+    /// Synthesized decoding is strict: a single drifted numeric field (a
+    /// fractional or out-of-range `message_count`, say) would fail the whole
+    /// sessions payload. Route every field through the lossy helpers instead
+    /// so an unusable value degrades to `nil`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
+        title = container.decodeLossyStringIfPresent(forKey: .title)
+        workspace = container.decodeLossyStringIfPresent(forKey: .workspace)
+        model = container.decodeLossyStringIfPresent(forKey: .model)
+        modelProvider = container.decodeLossyStringIfPresent(forKey: .modelProvider)
+        messageCount = container.decodeLossyIntIfPresent(forKey: .messageCount)
+        createdAt = container.decodeLossyDoubleIfPresent(forKey: .createdAt)
+        updatedAt = container.decodeLossyDoubleIfPresent(forKey: .updatedAt)
+        lastMessageAt = container.decodeLossyDoubleIfPresent(forKey: .lastMessageAt)
+        pinned = container.decodeLossyBoolIfPresent(forKey: .pinned)
+        archived = container.decodeLossyBoolIfPresent(forKey: .archived)
+        projectId = container.decodeLossyStringIfPresent(forKey: .projectId)
+        profile = container.decodeLossyStringIfPresent(forKey: .profile)
+        inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
+        outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
+        estimatedCost = container.decodeLossyDoubleIfPresent(forKey: .estimatedCost)
+        activeStreamId = container.decodeLossyStringIfPresent(forKey: .activeStreamId)
+        isStreaming = container.decodeLossyBoolIfPresent(forKey: .isStreaming)
+        isCliSession = container.decodeLossyBoolIfPresent(forKey: .isCliSession)
+        sourceTag = container.decodeLossyStringIfPresent(forKey: .sourceTag)
+        sessionSource = container.decodeLossyStringIfPresent(forKey: .sessionSource)
+        sourceLabel = container.decodeLossyStringIfPresent(forKey: .sourceLabel)
+        matchType = container.decodeLossyStringIfPresent(forKey: .matchType)
+        parentSessionId = container.decodeLossyStringIfPresent(forKey: .parentSessionId)
+        relationshipType = container.decodeLossyStringIfPresent(forKey: .relationshipType)
+        parentTitle = container.decodeLossyStringIfPresent(forKey: .parentTitle)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+        isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
+        sidebarReferenceSessions = decodeSessionSummariesTolerantly(
+            from: container,
+            forKey: .sidebarReferenceSessions
+        )
+    }
+
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
     /// Update this when `SessionSummary` gains a new stored property.
     func replacingTitle(with title: String) -> SessionSummary {
@@ -572,33 +644,10 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         parentTitle = container.decodeLossyStringIfPresent(forKey: .parentTitle)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
         isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
-        sidebarReferenceSessions = Self.decodeSessionSummariesTolerantly(
+        sidebarReferenceSessions = decodeSessionSummariesTolerantly(
             from: container,
             forKey: .sidebarReferenceSessions
         )
-    }
-
-    private static func decodeSessionSummariesTolerantly(
-        from container: KeyedDecodingContainer<CodingKeys>,
-        forKey key: CodingKeys
-    ) -> [SessionSummary]? {
-        if let direct = try? container.decodeIfPresent([SessionSummary].self, forKey: key) {
-            return direct
-        }
-
-        guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: key) else {
-            return nil
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-        let decoded = values.compactMap { value -> SessionSummary? in
-            guard let data = try? JSONEncoder().encode(value) else { return nil }
-            return try? decoder.decode(SessionSummary.self, from: data)
-        }
-
-        return decoded.isEmpty && !values.isEmpty ? nil : decoded
     }
 
     private static func decodeMessagesTolerantly(
@@ -640,6 +689,32 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
             return try? decoder.decode(PersistedToolCall.self, from: data)
         }
     }
+}
+
+/// Shared by `SessionSummary` and `SessionDetail`: prefers the direct decode,
+/// then falls back to per-element `JSONValue` round-trips so one malformed
+/// entry doesn't drop the whole list.
+private func decodeSessionSummariesTolerantly<Key: CodingKey>(
+    from container: KeyedDecodingContainer<Key>,
+    forKey key: Key
+) -> [SessionSummary]? {
+    if let direct = try? container.decodeIfPresent([SessionSummary].self, forKey: key) {
+        return direct
+    }
+
+    guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: key) else {
+        return nil
+    }
+
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+    let decoded = values.compactMap { value -> SessionSummary? in
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
+        return try? decoder.decode(SessionSummary.self, from: data)
+    }
+
+    return decoded.isEmpty && !values.isEmpty ? nil : decoded
 }
 
 /// Anchor key the server builds in `_anchor_message_key` (`api/routes.py`):

@@ -541,6 +541,44 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(liveActivityManager.ends.last?.status, .cancelled)
     }
 
+    /// A queued event from a torn-down SSE connection (stop() raced the
+    /// transport's already-dispatched callback) must not mutate the state of
+    /// the connection that replaced it.
+    @MainActor
+    func testEventsFromReplacedConnectionAreIgnored() throws {
+        let streamClient = RetainingHandlersSSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = ChatStreamCoordinator(
+            client: makeClient(handler: { request in
+                apiTestJSONResponse(#"{"active": true}"#, for: request)
+            }),
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            showsLiveActivityResponseExcerpts: false
+        )
+        coordinator.attach(delegate: delegate)
+
+        coordinator.start(streamID: "stream-1")
+        let replacedConnection = try XCTUnwrap(streamClient.handlers.first)
+
+        // A reconnect (stale-stream recovery, resume-after-suspend) replaces
+        // the EventSource for the same coordinator.
+        coordinator.start(streamID: "stream-1", replayAfterSeq: 3)
+        XCTAssertEqual(streamClient.handlers.count, 2)
+
+        // The old connection's late-delivered events must be dropped...
+        replacedConnection(.token("stale"))
+        replacedConnection(.done(DoneStreamEvent()))
+        XCTAssertEqual(delegate.tokens, [])
+        XCTAssertEqual(coordinator.activeStreamID, "stream-1")
+        XCTAssertEqual(delegate.completedNeedsTranscriptRefreshValues, [])
+
+        // ...while the live connection still streams normally.
+        try XCTUnwrap(streamClient.handlers.last)(.token("fresh"))
+        XCTAssertEqual(delegate.tokens, ["fresh"])
+    }
+
     @MainActor
     private func makeCoordinator(
         streamClient: CoordinatorSpySSEStreamingClient? = nil,
@@ -723,6 +761,23 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 }
 
 @MainActor
+/// Unlike `CoordinatorSpySSEStreamingClient`, keeps every connection's
+/// handler so tests can deliver events from a connection that has since been
+/// replaced by a reconnect.
+private final class RetainingHandlersSSEStreamingClient: SSEStreamingClient {
+    private(set) var handlers: [@MainActor (SSEEvent) -> Void] = []
+    private(set) var stopCount = 0
+    private(set) var lastEventID: String?
+
+    func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {
+        handlers.append(onEvent)
+    }
+
+    func stop() {
+        stopCount += 1
+    }
+}
+
 private final class CoordinatorSpySSEStreamingClient: SSEStreamingClient {
     private(set) var startedURLs: [URL] = []
     private(set) var stopCount = 0
@@ -764,7 +819,7 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
     private(set) var markStaleCount = 0
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {
+    func start(sessionID: String, sessionTitle: String, streamID: String?, serverURL: URL?) {
         starts.append(Start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID))
     }
 

@@ -13,6 +13,9 @@ final class CachedMessage {
     var messageId: String?
     var name: String?
     var toolCallId: String?
+    var toolUseId: String?
+    var toolCallsData: Data?
+    var contentPartsData: Data?
     var reasoning: String?
     var attachmentsData: Data?
     var cachedAt: Date
@@ -57,6 +60,9 @@ final class CachedMessage {
         messageId = message.messageId
         name = message.name
         toolCallId = message.toolCallId
+        toolUseId = message.toolUseId
+        toolCallsData = Self.encodeJSONValues(message.toolCalls)
+        contentPartsData = Self.encodeJSONValues(message.contentParts)
         reasoning = message.reasoning
         if let attachments = message.attachments, !attachments.isEmpty {
             attachmentsData = try? JSONEncoder().encode(attachments)
@@ -65,5 +71,10 @@ final class CachedMessage {
         }
         self.cachedAt = cachedAt
         expiresAt = cachedAt.addingTimeInterval(CachePolicy.ttl)
+    }
+
+    private static func encodeJSONValues(_ values: [JSONValue]?) -> Data? {
+        guard let values, !values.isEmpty else { return nil }
+        return try? JSONEncoder().encode(values)
     }
 }

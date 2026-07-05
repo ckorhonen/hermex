@@ -324,8 +324,16 @@ private extension ChatMessage {
             messageId: cachedMessage.messageId,
             name: cachedMessage.name,
             toolCallId: cachedMessage.toolCallId,
+            toolUseId: cachedMessage.toolUseId,
+            toolCalls: Self.decodeJSONValues(cachedMessage.toolCallsData),
+            contentParts: Self.decodeJSONValues(cachedMessage.contentPartsData),
             reasoning: cachedMessage.reasoning,
             attachments: attachments
         )
+    }
+
+    private static func decodeJSONValues(_ data: Data?) -> [JSONValue]? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode([JSONValue].self, from: data)
     }
 }

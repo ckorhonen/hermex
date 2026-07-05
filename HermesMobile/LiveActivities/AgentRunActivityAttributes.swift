@@ -43,12 +43,23 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     var sessionTitle: String
     var streamID: String?
     var startedAt: Date
+    /// Server the run belongs to, so multi-server reconciliation can route each
+    /// orphan to its own server. Optional: activities persisted before this
+    /// field existed decode without it.
+    var serverURLString: String?
 
-    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date) {
+    init(
+        sessionID: String,
+        sessionTitle: String,
+        streamID: String? = nil,
+        startedAt: Date,
+        serverURLString: String? = nil
+    ) {
         self.sessionID = sessionID
         self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
         self.streamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
         self.startedAt = startedAt
+        self.serverURLString = serverURLString
     }
 }
 

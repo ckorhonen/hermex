@@ -83,6 +83,19 @@ final class ContextWindowIndicatorTests: XCTestCase {
         XCTAssertNil(ContextWindowFormatter.compactIndicator(from: snapshot))
     }
 
+    func testCompactIndicatorToleratesExtremeTokenRatio() {
+        let snapshot = ContextWindowSnapshot(
+            contextLength: 1,
+            thresholdTokens: nil,
+            lastPromptTokens: Int.max,
+            inputTokens: nil,
+            outputTokens: nil,
+            estimatedCost: nil
+        )
+
+        XCTAssertNil(ContextWindowFormatter.compactIndicator(from: snapshot))
+    }
+
     func testTokensLabelFormatsK() {
         let snapshot = ContextWindowSnapshot(
             contextLength: 128_000,

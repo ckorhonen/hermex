@@ -348,9 +348,8 @@ extension KeyedDecodingContainer {
             return value
         }
 
-        if let value = try? decodeIfPresent(Double.self, forKey: key),
-           value.isFinite {
-            return Int(value)
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return Int(lossyTruncating: value)
         }
 
         guard let stringValue = try? decodeIfPresent(String.self, forKey: key) else {
@@ -362,13 +361,11 @@ extension KeyedDecodingContainer {
             return value
         }
 
-        guard let value = Double(trimmed),
-              value.isFinite
-        else {
+        guard let value = Double(trimmed) else {
             return nil
         }
 
-        return Int(value)
+        return Int(lossyTruncating: value)
     }
 
     func decodeLossyBoolIfPresent(forKey key: Key) -> Bool? {
