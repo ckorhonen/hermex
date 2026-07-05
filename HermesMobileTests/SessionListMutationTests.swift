@@ -1126,6 +1126,17 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(SessionRowView.isActiveStreaming(idleRow))
         XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), [])
 
+        // Seed known metadata so the keep-if-nil fallback below is observable.
+        _ = viewModel.applySessionActivityUpdate(
+            SessionActivityUpdate(
+                sessionID: "session-abc",
+                activeStreamId: nil,
+                isStreaming: false,
+                messageCount: 7,
+                lastMessageAt: 1_700_000_000
+            )
+        )
+
         _ = viewModel.applySessionActivityUpdate(
             SessionActivityUpdate(
                 sessionID: "session-abc",
@@ -1138,8 +1149,10 @@ final class SessionListMutationTests: XCTestCase {
         let streamingRow = try XCTUnwrap(viewModel.sessions.first)
         XCTAssertTrue(SessionRowView.isActiveStreaming(streamingRow))
         XCTAssertEqual(SessionListViewModel.activeStreamIDs(in: viewModel.sessions), ["stream-1"])
-        // messageCount/lastMessageAt were unknown, so the row keeps its existing values.
-        XCTAssertEqual(streamingRow.title, "Planning")
+        // messageCount/lastMessageAt were unknown in the second update, so the
+        // row keeps the previously seeded values (keep-if-nil semantics).
+        XCTAssertEqual(streamingRow.messageCount, 7)
+        XCTAssertEqual(streamingRow.lastMessageAt, 1_700_000_000)
 
         _ = viewModel.applySessionActivityUpdate(
             SessionActivityUpdate(
@@ -2695,6 +2708,34 @@ final class SessionListMutationTests: XCTestCase {
         let client = APIClient(baseURL: server, session: session)
 
         return ArchivedSessionsViewModel(server: server, client: client)
+    }
+
+    func testNestedSelectionPolicyMatchesOnlyTrackedNestedSessions() {
+        XCTAssertTrue(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: ["forked-1", "forked-2"],
+                afterMutating: "forked-2"
+            ),
+            "Archiving a session forked from the open chat must close the stack that contains it"
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: ["forked-1"],
+                afterMutating: "unrelated"
+            )
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: [],
+                afterMutating: "forked-1"
+            )
+        )
+        XCTAssertFalse(
+            SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+                nestedOpenSessionIDs: ["forked-1"],
+                afterMutating: "  "
+            )
+        )
     }
 
     private func sessionListJSON(forLoadCount loadCount: Int) -> String {

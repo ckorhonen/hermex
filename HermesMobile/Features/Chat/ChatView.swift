@@ -1813,6 +1813,12 @@ struct ChatView: View {
                 endResponseCompletionBackgroundTask()
             }
 
+            // A sidebar rename issued mid-stream was deferred by
+            // applyExternalTitle's streaming guard; the .onChange trigger is
+            // edge-triggered, so flush it here or the header stays stale
+            // forever. No-op when the titles already agree.
+            viewModel.applyExternalTitle(session.title)
+
             // The agent may have edited files this turn, so refresh git state (status,
             // ahead/behind, branch) once the response finishes — keeps the toolbar badge,
             // Changes row, and commit surfaces in sync without re-entering the chat.

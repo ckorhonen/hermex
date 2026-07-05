@@ -24,6 +24,9 @@ struct SessionListView: View {
     @State private var viewModel: SessionListViewModel
     @State private var createdSession: SessionSummary?
     @State private var selectedDetailSession: SessionSummary?
+    /// Session IDs opened as nested pushes inside the current chat (forks,
+    /// profile switches); cleared whenever the top-level selection changes.
+    @State private var nestedOpenSessionIDs: Set<String> = []
     @State private var pendingNewChat: PendingNewChatRoute?
     @State private var selectedUtilityDestination: SessionListUtilityDestination?
     @State private var sessionPendingRename: SessionSummary?
@@ -118,6 +121,15 @@ struct SessionListView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             refreshAfterReturningIfNeeded()
+        }
+        // Switching the top-level selection unmounts the previous chat's
+        // nested pushes, so their created-session tracking must not leak into
+        // the newly opened chat's stack.
+        .onChange(of: selectedDetailSession?.sessionId) { _, _ in
+            nestedOpenSessionIDs = []
+        }
+        .onChange(of: createdSession?.sessionId) { _, _ in
+            nestedOpenSessionIDs = []
         }
     }
 
@@ -845,6 +857,13 @@ struct SessionListView: View {
     /// branch, profile switch) so the sidebar shows its row without a full reload.
     private func handleSessionCreated(_ session: SessionSummary) {
         viewModel.applyCreatedSession(session, modelContext: modelContext)
+        // Sessions created from inside an open chat (fork, profile switch)
+        // are pushed as *nested* navigation inside that chat, invisible to
+        // the top-level selection state. Remember them so archiving/deleting
+        // such a row can still close the chat stack that contains it.
+        if let sessionID = session.sessionId {
+            nestedOpenSessionIDs.insert(sessionID)
+        }
     }
 
     private func monitorActiveSessionRows() async {
@@ -959,9 +978,22 @@ struct SessionListView: View {
     private func clearOpenSelectionIfNeeded(afterMutating session: SessionSummary) {
         if SessionListOpenSelectionPolicy.shouldClearSelection(createdSession, afterMutating: session.sessionId) {
             createdSession = nil
+            nestedOpenSessionIDs = []
         }
         if SessionListOpenSelectionPolicy.shouldClearSelection(selectedDetailSession, afterMutating: session.sessionId) {
             selectedDetailSession = nil
+            nestedOpenSessionIDs = []
+        }
+        if SessionListOpenSelectionPolicy.nestedSelectionShouldClear(
+            nestedOpenSessionIDs: nestedOpenSessionIDs,
+            afterMutating: session.sessionId
+        ) {
+            // The mutated session lives somewhere inside the open chat's
+            // nested navigation; tearing down the top-level selection is the
+            // only handle we have on that stack.
+            createdSession = nil
+            selectedDetailSession = nil
+            nestedOpenSessionIDs = []
         }
     }
 
@@ -1386,6 +1418,22 @@ private struct PendingNewChatRoute: Identifiable, Hashable {
 /// `SessionListView` so the rule is unit-testable without SwiftUI state (same pattern
 /// as `DefaultProfileSelection`).
 enum SessionListOpenSelectionPolicy {
+    /// Whether a mutation to `rawMutatedSessionID` hits a session opened as a
+    /// nested push inside the current chat (fork/profile-switch), which the
+    /// top-level selection can't see directly.
+    static func nestedSelectionShouldClear(
+        nestedOpenSessionIDs: Set<String>,
+        afterMutating rawMutatedSessionID: String?
+    ) -> Bool {
+        guard let mutatedSessionID = rawMutatedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !mutatedSessionID.isEmpty
+        else {
+            return false
+        }
+
+        return nestedOpenSessionIDs.contains(mutatedSessionID)
+    }
+
     static func shouldClearSelection(
         _ selection: SessionSummary?,
         afterMutating rawMutatedSessionID: String?

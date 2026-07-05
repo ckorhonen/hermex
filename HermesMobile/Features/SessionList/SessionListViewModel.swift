@@ -670,6 +670,9 @@ final class SessionListViewModel {
         } else {
             sessions.insert(session, at: 0)
         }
+        // Keep the backing array in the pinned-then-recency order load() uses,
+        // so direct readers of `sessions` never observe insertion order.
+        sessions = Self.sortedSessions(sessions)
 
         if let modelContext {
             do {
