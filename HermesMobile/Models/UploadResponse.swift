@@ -116,11 +116,7 @@ extension PendingAttachment {
     }
 
     var chatReference: String {
-        if isImage {
-            return path.isEmpty ? name : path
-        }
-
-        return path.isEmpty ? name : path
+        path.isEmpty ? name : path
     }
 
     func toJSONValue() -> JSONValue {

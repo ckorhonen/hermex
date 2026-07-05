@@ -174,10 +174,11 @@ xcrun simctl list devices available
 Build for an available iPhone simulator:
 
 ```zsh
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 15' build
+xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17' build
 ```
 
-If `iPhone 15` is not installed, choose a nearby available iPhone simulator.
+If `iPhone 17` (the project default — see `.xcodebuildmcp/config.yaml` and CI) is
+not installed, choose a nearby available iPhone simulator.
 
 ## TestFlight Readiness Notes
 
