@@ -1199,6 +1199,51 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testApplyCreatedSessionInsertsRowExactlyOnceWithoutNetworkRequest() async throws {
+        var requestedPaths: [String] = []
+        let context = try makeContext()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load(modelContext: context)
+        let forkedSession = try makeSessionSummary(
+            id: "session-fork",
+            title: "Planning (fork)",
+            pinned: false,
+            archived: false
+        )
+
+        let didInsert = viewModel.applyCreatedSession(forkedSession, modelContext: context)
+        let didReapply = viewModel.applyCreatedSession(forkedSession, modelContext: context)
+        let cachedSessions = try CacheStore.cachedSessions(serverURL: server, in: context)
+
+        XCTAssertTrue(didInsert)
+        XCTAssertFalse(didReapply)
+        XCTAssertEqual(requestedPaths, ["/api/sessions"])
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-fork", "session-abc"])
+        XCTAssertEqual(viewModel.sessions.filter { $0.sessionId == "session-fork" }.count, 1)
+        XCTAssertTrue(cachedSessions.contains { $0.sessionId == "session-fork" })
+    }
+
+    @MainActor
+    func testApplyCreatedSessionIgnoresRowsWithoutSessionID() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        await viewModel.load()
+        let didInsert = viewModel.applyCreatedSession(SessionSummary(title: "No ID"))
+
+        XCTAssertFalse(didInsert)
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-abc"])
+    }
+
     func testArchiveOrDeleteClearsOnlyMatchingOpenChatSelection() throws {
         let openSession = try makeSessionSummary(
             id: "session-abc",

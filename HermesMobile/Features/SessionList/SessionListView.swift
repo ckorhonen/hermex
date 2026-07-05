@@ -132,7 +132,8 @@ struct SessionListView: View {
                     childSessions: childSessions(for: session),
                     onOpenRelatedSession: openSession,
                     onSessionTitleChange: handleSessionTitleChange,
-                    onSessionActivityChange: handleSessionActivityChange
+                    onSessionActivityChange: handleSessionActivityChange,
+                    onSessionCreated: handleSessionCreated
                 )
             }
             .navigationDestination(item: $pendingNewChat) { route in
@@ -147,7 +148,8 @@ struct SessionListView: View {
                     viewModel: viewModel,
                     onSessionTitleChange: handleSessionTitleChange,
                     onSessionActivityChange: handleSessionActivityChange,
-                    onAPIError: authManager.handleAPIError
+                    onAPIError: authManager.handleAPIError,
+                    onSessionCreated: handleSessionCreated
                 )
             }
             .navigationDestination(item: $selectedUtilityDestination) { destination in
@@ -231,6 +233,10 @@ struct SessionListView: View {
                 onSessionActivityChange: handleSessionActivityChange,
                 onAPIError: authManager.handleAPIError,
                 onSessionCreated: { session in
+                    // Fires for the pending chat's own creation and (via the inner
+                    // ChatView) for sessions it forks: insert/refresh the sidebar row
+                    // first, then resolve the pending route onto the created session.
+                    handleSessionCreated(session)
                     pendingNewChat = nil
                     selectedDetailSession = session
                     unreadCompletedSessionIDs.remove(session.id)
@@ -247,7 +253,8 @@ struct SessionListView: View {
                 childSessions: childSessions(for: session),
                 onOpenRelatedSession: openSession,
                 onSessionTitleChange: handleSessionTitleChange,
-                onSessionActivityChange: handleSessionActivityChange
+                onSessionActivityChange: handleSessionActivityChange,
+                onSessionCreated: handleSessionCreated
             )
             .id(session.id)
         } else {
@@ -822,6 +829,12 @@ struct SessionListView: View {
     /// 1 Hz active-row monitor starts while the stream runs.
     private func handleSessionActivityChange(_ update: SessionActivityUpdate) {
         viewModel.applySessionActivityUpdate(update, modelContext: modelContext)
+    }
+
+    /// Inserts a session an open chat just created (fork-from-message, slash-command
+    /// branch, profile switch) so the sidebar shows its row without a full reload.
+    private func handleSessionCreated(_ session: SessionSummary) {
+        viewModel.applyCreatedSession(session, modelContext: modelContext)
     }
 
     private func monitorActiveSessionRows() async {
@@ -1417,6 +1430,9 @@ private struct PendingNewChatView: View {
     let onSessionTitleChange: (String, String) -> Void
     let onSessionActivityChange: (SessionActivityUpdate) -> Void
     let onAPIError: (Error) -> Void
+    /// Fired when the pending chat's session is created and, forwarded through the
+    /// inner `ChatView`, when that chat creates further sessions (fork-from-message,
+    /// slash-command branch, profile switch) so the session list can react.
     let onSessionCreated: (SessionSummary) -> Void
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
@@ -1470,6 +1486,7 @@ private struct PendingNewChatView: View {
                     loadsInitialMessages: false,
                     onSessionTitleChange: onSessionTitleChange,
                     onSessionActivityChange: onSessionActivityChange,
+                    onSessionCreated: onSessionCreated,
                     autoStartsVoiceInput: autoStartsVoiceInput
                 )
             } else {

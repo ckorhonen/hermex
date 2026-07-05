@@ -653,6 +653,35 @@ final class SessionListViewModel {
         return true
     }
 
+    /// Inserts a session created outside this list (fork-from-message,
+    /// profile-switch new session) so the sidebar learns about it without a
+    /// reload. Mirrors `createSession`'s local insertion: dedupes by ID,
+    /// replacing an existing row instead of inserting a duplicate.
+    @discardableResult
+    func applyCreatedSession(
+        _ session: SessionSummary,
+        modelContext: ModelContext? = nil
+    ) -> Bool {
+        guard let sessionID = Self.nonEmpty(session.sessionId) else { return false }
+
+        if let existingIndex = sessions.firstIndex(where: { $0.sessionId == sessionID }) {
+            guard sessions[existingIndex] != session else { return false }
+            sessions[existingIndex] = session
+        } else {
+            sessions.insert(session, at: 0)
+        }
+
+        if let modelContext {
+            do {
+                try CacheStore.cacheSession(session, serverURL: server, in: modelContext)
+            } catch {
+                cacheErrorMessage = error.localizedDescription
+            }
+        }
+
+        return true
+    }
+
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
         guard !isViewingCachedData else {
             actionErrorMessage = String(localized: "Reconnect to the server to rename a session.")

@@ -104,6 +104,10 @@ struct ChatView: View {
     let onOpenRelatedSession: (SessionSummary) -> Void
     let onSessionTitleChange: (String, String) -> Void
     let onSessionActivityChange: (SessionActivityUpdate) -> Void
+    /// Fired when this chat creates a new session (fork-from-message, slash-command
+    /// branch, profile switch with a new session) so the session list can insert its
+    /// row. Threaded like `onSessionTitleChange`.
+    let onSessionCreated: (SessionSummary) -> Void
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
@@ -161,6 +165,7 @@ struct ChatView: View {
         onOpenRelatedSession: @escaping (SessionSummary) -> Void = { _ in },
         onSessionTitleChange: @escaping (String, String) -> Void = { _, _ in },
         onSessionActivityChange: @escaping (SessionActivityUpdate) -> Void = { _ in },
+        onSessionCreated: @escaping (SessionSummary) -> Void = { _ in },
         autoStartsVoiceInput: Bool = false
     ) {
         self.session = session
@@ -171,6 +176,7 @@ struct ChatView: View {
         self.onOpenRelatedSession = onOpenRelatedSession
         self.onSessionTitleChange = onSessionTitleChange
         self.onSessionActivityChange = onSessionActivityChange
+        self.onSessionCreated = onSessionCreated
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -501,7 +507,8 @@ struct ChatView: View {
                     server: server,
                     onAPIError: onAPIError,
                     onSessionTitleChange: onSessionTitleChange,
-                    onSessionActivityChange: onSessionActivityChange
+                    onSessionActivityChange: onSessionActivityChange,
+                    onSessionCreated: onSessionCreated
                 )
             }
             .sheet(isPresented: $showsChildSessionsSheet) {
@@ -1442,7 +1449,7 @@ struct ChatView: View {
             }
             draftMessage = ""
         case .openedSession(let session):
-            forkedSession = session
+            openCreatedSession(session)
             draftMessage = ""
         case .unsupported(let friendlyMessage):
             viewModel.setSendErrorMessage(friendlyMessage)
@@ -1492,8 +1499,16 @@ struct ChatView: View {
         }
 
         if let session {
-            forkedSession = session
+            openCreatedSession(session)
         }
+    }
+
+    /// Opens a session this chat just created and reports it upward so the session
+    /// list inserts its row — otherwise the sidebar never learns about forked or
+    /// profile-switch sessions until a full reload.
+    private func openCreatedSession(_ session: SessionSummary) {
+        onSessionCreated(session)
+        forkedSession = session
     }
 
     private func handleProfileSelection(_ profile: ProfileSummary) {
@@ -1522,7 +1537,7 @@ struct ChatView: View {
         }
 
         if let session = outcome?.session {
-            forkedSession = session
+            openCreatedSession(session)
         }
     }
 
