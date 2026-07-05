@@ -28,18 +28,28 @@ struct OrphanedLiveActivity: Equatable {
     let sessionID: String
     let sessionTitle: String?
     let updatedAt: Date
+    /// Server the run belongs to. `nil` for activities persisted before this
+    /// field existed — those are treated as belonging to the active server.
+    let serverURLString: String?
 
-    init(streamID: String, sessionID: String, sessionTitle: String? = nil, updatedAt: Date) {
+    init(
+        streamID: String,
+        sessionID: String,
+        sessionTitle: String? = nil,
+        updatedAt: Date,
+        serverURLString: String? = nil
+    ) {
         self.streamID = streamID
         self.sessionID = sessionID
         self.sessionTitle = sessionTitle
         self.updatedAt = updatedAt
+        self.serverURLString = serverURLString
     }
 }
 
 @MainActor
 protocol AgentLiveActivityManaging: AnyObject {
-    func start(sessionID: String, sessionTitle: String, streamID: String?)
+    func start(sessionID: String, sessionTitle: String, streamID: String?, serverURL: URL?)
     func update(_ event: AgentLiveActivityEvent)
     func markStale()
     func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?)
@@ -90,7 +100,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         self.minimumUpdateInterval = minimumUpdateInterval
     }
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {
+    func start(sessionID: String, sessionTitle: String, streamID: String?, serverURL: URL?) {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else { return }
         let normalizedStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
@@ -143,6 +153,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionID: normalizedSessionID,
                 streamID: normalizedStreamID,
                 sessionTitle: state.sessionTitle,
+                serverURL: serverURL,
                 state: state,
                 lifecycle: lifecycle
             )
@@ -266,7 +277,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 streamID: streamID,
                 sessionID: state.sessionID,
                 sessionTitle: state.sessionTitle,
-                updatedAt: state.updatedAt
+                updatedAt: state.updatedAt,
+                serverURLString: activity.attributes.serverURLString
             )
         }
         return result
@@ -313,6 +325,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         sessionID: String,
         streamID: String?,
         sessionTitle: String,
+        serverURL: URL?,
         state: AgentRunActivityAttributes.ContentState,
         lifecycle: Int
     ) async {
@@ -355,7 +368,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionID: sessionID,
                 sessionTitle: sessionTitle,
                 streamID: streamID,
-                startedAt: state.startedAt
+                startedAt: state.startedAt,
+                serverURLString: serverURL?.absoluteString
             )
             let requestedActivity = try Activity.request(
                 attributes: attributes,
@@ -581,10 +595,16 @@ enum LiveActivityReconciler {
         notifiesOnCompletion: Bool,
         preferenceEnabled: Bool,
         now: Date = Date(),
-        manager: (any AgentLiveActivityManaging)? = nil
+        manager: (any AgentLiveActivityManaging)? = nil,
+        streamStatus: ((String) async -> ChatStreamStatusResponse?)? = nil
     ) async {
         let manager = manager ?? AgentLiveActivityManager.shared
-        let orphans = manager.orphanedActivities()
+        // Only reconcile orphans recorded on this server: asking another server
+        // about a foreign stream ID would either strand the orphan (unknown
+        // stream → error → skipped forever) or finalize a still-running run off
+        // the wrong server's answer. Orphans persisted before the server was
+        // recorded reconcile against the active server, as before.
+        let orphans = manager.orphanedActivities().filter { orphanBelongsToServer($0, server: server) }
         guard !orphans.isEmpty else { return }
         liveActivityReconcilerLogger.notice("Checking \(orphans.count, privacy: .public) persisted Live Activity(ies) against server status")
 
@@ -593,7 +613,7 @@ enum LiveActivityReconciler {
             orphans: orphans,
             now: now,
             notifiesOnCompletion: notifiesOnCompletion,
-            streamStatus: { streamID in
+            streamStatus: streamStatus ?? { streamID in
                 try? await client.chatStreamStatus(streamID: streamID)
             },
             endOrphan: { orphan, outcome in
@@ -625,6 +645,22 @@ enum LiveActivityReconciler {
                 )
             }
         )
+    }
+
+    /// Whether an orphan belongs to `server`. Orphans persisted before the
+    /// server was recorded (`serverURLString == nil`) are treated as the active
+    /// server's, preserving single-server behavior.
+    static func orphanBelongsToServer(_ orphan: OrphanedLiveActivity, server: URL) -> Bool {
+        guard let recorded = orphan.serverURLString else { return true }
+        return normalizedServerKey(recorded) == normalizedServerKey(server.absoluteString)
+    }
+
+    private static func normalizedServerKey(_ raw: String) -> String {
+        var key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while key.hasSuffix("/") {
+            key.removeLast()
+        }
+        return key
     }
 
     /// Testable core. For each orphaned stream, fetch its server status; only a

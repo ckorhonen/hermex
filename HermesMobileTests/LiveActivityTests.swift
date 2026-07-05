@@ -881,6 +881,45 @@ final class LiveActivityTests: XCTestCase {
     /// Builds a stream-status response for driving the reconciler core. `nil`
     /// `terminalState` omits the `journal` block entirely (the server's shape
     /// when it has no run summary), which the reconciler maps to `.complete`.
+    /// An orphan recorded on Server A must not be finalized off Server B's
+    /// answer: Server B doesn't know that stream, so its "inactive" response
+    /// would wrongly end a run that may still be live on Server A.
+    @MainActor
+    func testReconcilerSkipsOrphansRecordedOnAnotherServer() async {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let manager = OrphanReportingFakeManager(orphans: [
+            OrphanedLiveActivity(
+                streamID: "server-a-stream",
+                sessionID: "s-a",
+                updatedAt: now,
+                serverURLString: "https://server-a.example"
+            ),
+            OrphanedLiveActivity(
+                streamID: "active-server-stream",
+                sessionID: "s-b",
+                updatedAt: now,
+                serverURLString: "https://server-b.example/"
+            ),
+            OrphanedLiveActivity(
+                streamID: "legacy-stream",
+                sessionID: "s-legacy",
+                updatedAt: now,
+                serverURLString: nil
+            )
+        ])
+
+        await LiveActivityReconciler.reconcileOrphanedActivities(
+            server: URL(string: "https://server-b.example")!,
+            notifiesOnCompletion: false,
+            preferenceEnabled: false,
+            now: now,
+            manager: manager,
+            streamStatus: { _ in self.statusResponse(active: false) }
+        )
+
+        XCTAssertEqual(manager.endedStreamIDs, ["active-server-stream", "legacy-stream"])
+    }
+
     private func statusResponse(active: Bool, terminalState: String? = nil) -> ChatStreamStatusResponse {
         ChatStreamStatusResponse(
             active: active,
@@ -1150,7 +1189,7 @@ final class LiveActivityTests: XCTestCase {
         let manager = AgentLiveActivityManager()
 
         // A live SSE connection claims the stream so the reconciler leaves it alone.
-        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc")
+        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc", serverURL: nil)
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
         // Suspension / transport trouble releases the claim — the suspended stream is
@@ -1159,7 +1198,7 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertNil(manager.activeConnectedStreamID)
 
         // Reconnecting the same stream re-claims it.
-        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc")
+        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc", serverURL: nil)
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
         // Finalizing the run releases the claim.
@@ -1187,7 +1226,7 @@ private final class SpyAgentLiveActivityManager: AgentLiveActivityManaging {
     private(set) var didMarkStale = false
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {
+    func start(sessionID: String, sessionTitle: String, streamID: String?, serverURL: URL?) {
         starts.append(Start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID))
     }
 
@@ -1254,4 +1293,28 @@ private final class LiveActivityURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+@MainActor
+private final class OrphanReportingFakeManager: AgentLiveActivityManaging {
+    private let orphans: [OrphanedLiveActivity]
+    private(set) var endedStreamIDs: [String] = []
+
+    init(orphans: [OrphanedLiveActivity]) {
+        self.orphans = orphans
+    }
+
+    func start(sessionID: String, sessionTitle: String, streamID: String?, serverURL: URL?) {}
+    func update(_ event: AgentLiveActivityEvent) {}
+    func markStale() {}
+    func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?) {}
+
+    func orphanedActivities() -> [OrphanedLiveActivity] {
+        orphans
+    }
+
+    func endOrphanedActivity(streamID: String, status: AgentRunActivityStatus, activity: String) async -> Bool {
+        endedStreamIDs.append(streamID)
+        return true
+    }
 }
