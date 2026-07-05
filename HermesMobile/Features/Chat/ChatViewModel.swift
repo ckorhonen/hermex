@@ -103,14 +103,20 @@ final class ChatViewModel {
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
     private(set) var completedToolCallGroups: [ToolCallGroup] = []
     private var completedToolCallGroupLookup = ToolCallGroupAnchorLookup()
-    private(set) var completedReasoningGroups: [ReasoningGroup] = []
-    var displayedReasoningGroups: [ReasoningGroup] {
-        Self.reasoningDisplayGroups(
-            messages: messages,
-            messageOffset: messagesOffset,
-            archivedGroups: completedReasoningGroups
-        )
+    private(set) var completedReasoningGroups: [ReasoningGroup] = [] {
+        didSet { recomputeDisplayedReasoningGroups() }
     }
+    /// Memoized reasoning-group mapping, recomputed only when its inputs
+    /// (`messages`, `messagesOffset`, `completedReasoningGroups`) change. As a
+    /// computed property this re-ran the full echo-stripping classification
+    /// pass over every loaded message on every `ChatView` body evaluation;
+    /// long conversations paid that O(messages × reasoning-text) cost per
+    /// streaming flush and per scroll-driven body pass. The equality guard in
+    /// `recomputeDisplayedReasoningGroups()` also keeps the array's storage
+    /// identity stable across recomputes that produce equal output, so the
+    /// per-row `.equatable()` comparisons in the transcript short-circuit on
+    /// buffer identity instead of deep-comparing every group's text.
+    private(set) var displayedReasoningGroups: [ReasoningGroup] = []
     func completedToolCallGroupsForAnchor(_ anchorMessageID: String?) -> [ToolCallGroup] {
         completedToolCallGroupLookup.groups(anchorMessageID: anchorMessageID)
     }
@@ -136,7 +142,20 @@ final class ChatViewModel {
             from: messages,
             messageOffset: messagesOffset
         )
+        recomputeDisplayedReasoningGroups()
         recomputeCompressionReferenceCard()
+    }
+
+    private func recomputeDisplayedReasoningGroups() {
+        let groups = Self.reasoningDisplayGroups(
+            messages: messages,
+            messageOffset: messagesOffset,
+            archivedGroups: completedReasoningGroups
+        )
+        // Observer-silent (and storage-identity-preserving) when unchanged.
+        guard displayedReasoningGroups != groups else { return }
+
+        displayedReasoningGroups = groups
     }
     /// Synthesized "Context compaction · Reference only" card resolved from the
     /// session's `compression_anchor_*` metadata; nil when the session has no

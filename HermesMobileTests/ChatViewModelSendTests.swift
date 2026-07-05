@@ -1682,6 +1682,84 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.content, "Partial live answer.")
     }
 
+    /// Issue #32: `displayedReasoningGroups` is memoized — recomputed when its
+    /// inputs (messages, offset, archived groups) change, not on every read.
+    /// As a computed property it re-ran the full echo-stripping classification
+    /// pass over every loaded message on each ChatView body evaluation, and it
+    /// returned fresh array/string storage each time, defeating the transcript
+    /// rows' `.equatable()` short-circuit.
+    @MainActor
+    func testDisplayedReasoningGroupsAreMemoizedAndTrackMessageChanges() async throws {
+        let sessionJSON: @Sendable (String) -> String = { reasoning in
+            """
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Think it through",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Here is the answer.",
+                    "timestamp": 1770000101,
+                    "message_id": "assistant-1",
+                    "reasoning": "\(reasoning)"
+                  }
+                ]
+              }
+            }
+            """
+        }
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(sessionJSON("First I check the workspace."), for: request)
+        }
+
+        await viewModel.loadMessages()
+
+        let first = viewModel.displayedReasoningGroups
+        XCTAssertEqual(first.map(\.text), ["First I check the workspace."])
+        XCTAssertEqual(
+            first,
+            ChatViewModel.reasoningDisplayGroups(
+                messages: viewModel.messages,
+                messageOffset: viewModel.messagesOffset,
+                archivedGroups: viewModel.completedReasoningGroups
+            ),
+            "the memoized value must stay in sync with the pure classification function"
+        )
+
+        // Reads without a data change must return the same array storage — a
+        // recompute-per-read (the old computed property) hands back fresh
+        // storage every time and fails this identity check.
+        let second = viewModel.displayedReasoningGroups
+        let sharesStorage = first.withUnsafeBufferPointer { firstBuffer in
+            second.withUnsafeBufferPointer { secondBuffer in
+                firstBuffer.baseAddress == secondBuffer.baseAddress
+            }
+        }
+        XCTAssertTrue(
+            sharesStorage,
+            "repeated reads without message changes must return the memoized array, not a recomputed copy"
+        )
+
+        // A message change must still refresh the memoized groups.
+        MockURLProtocol.requestHandler = { request in
+            apiTestJSONResponse(sessionJSON("Then I re-check the tests."), for: request)
+        }
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroups.map(\.text),
+            ["Then I re-check the tests."],
+            "memoization must recompute when messages change"
+        )
+    }
+
     @MainActor
     func testTransportReconnectUsesReplayWhenInactiveStreamHasJournal() async throws {
         let streamClient = SpySSEStreamingClient()
