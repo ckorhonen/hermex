@@ -706,7 +706,7 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: effectiveCodePointSize, design: .monospaced))
+        .font(AppFont.mono(size: effectiveCodePointSize))
         .foregroundStyle(ZoraBrand.paper.opacity(0.88))
     }
 
@@ -751,7 +751,7 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: effectiveCodePointSize, design: .monospaced))
+        .font(AppFont.mono(size: effectiveCodePointSize))
     }
 
     private var effectiveCodePointSize: CGFloat {

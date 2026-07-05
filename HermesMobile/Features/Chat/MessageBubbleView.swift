@@ -24,6 +24,8 @@ struct MessageBubbleView: View {
 
     @State private var isUserBubbleExpanded = false
 
+    /// Stores a clamped transcript font scale so all row-local font and spacing
+    /// math uses the same bounded value as the transcript environment.
     init(
         message: ChatMessage,
         chatFontScale: Double = ChatTranscriptDisplaySettings.defaultFontScale,
