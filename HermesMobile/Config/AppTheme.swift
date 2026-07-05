@@ -777,6 +777,8 @@ enum ChatTranscriptDisplaySettings {
 
     static func increasedFontScale(from value: Double) -> Double {
         let current = boundedFontScale(value)
+        // When a stored value lands between slider ticks, step back to the readable default
+        // before moving past it; otherwise Command-Plus from 99% would jump straight to 105%.
         if current < defaultFontScale, defaultFontScale - current <= fontScaleStep {
             return defaultFontScale
         }
@@ -785,6 +787,7 @@ enum ChatTranscriptDisplaySettings {
 
     static func decreasedFontScale(from value: Double) -> Double {
         let current = boundedFontScale(value)
+        // Symmetric snap so Command-Minus from 101% returns to 100% before shrinking further.
         if current > defaultFontScale, current - defaultFontScale <= fontScaleStep {
             return defaultFontScale
         }

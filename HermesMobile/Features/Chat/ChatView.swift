@@ -383,6 +383,8 @@ struct ChatView: View {
             Button(String(localized: "Increase chat font size"), action: increaseChatFontScale)
                 .keyboardShortcut("+", modifiers: .command)
 
+            // Hardware keyboards usually emit "=" for the physical plus key unless Shift is held;
+            // register both so Command-Plus works consistently on iPad and Mac keyboards.
             Button(String(localized: "Increase chat font size"), action: increaseChatFontScale)
                 .keyboardShortcut("=", modifiers: .command)
 

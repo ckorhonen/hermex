@@ -200,7 +200,7 @@ struct MessageBubbleView: View {
     private var userBubble: some View {
         VStack(alignment: .trailing, spacing: 6) {
             Text(verbatim: userBubbleText)
-                .font(.system(size: chatBodyPointSize))
+                .font(AppFont.body(size: chatBodyPointSize))
                 .lineLimit(isUserBubbleExpanded ? nil : Self.collapsedUserBubbleLineLimit)
                 .textSelection(.enabled)
 
