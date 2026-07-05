@@ -8,7 +8,12 @@ struct ToolActivityGroupView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatTranscriptFontScale) private var chatFontScale
     @Environment(\.transcriptCardExpansionStore) private var expansionStore
+    // Dynamic Type first, then the chat font-size preference — mirrors the
+    // message bubbles so the card chrome tracks the transcript text.
+    @ScaledMetric(relativeTo: .caption) private var scaledCaptionPointSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption) private var scaledIconPointSize: CGFloat = 14
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var localUserToggledExpansion: Bool?
 
@@ -25,6 +30,11 @@ struct ToolActivityGroupView: View {
         } else {
             localUserToggledExpansion = value
         }
+    }
+
+
+    private func cardFontSize(_ base: CGFloat) -> CGFloat {
+        base * CGFloat(ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale))
     }
 
     private var isExpanded: Bool {
@@ -70,7 +80,7 @@ struct ToolActivityGroupView: View {
     private var header: some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
             Image(systemName: activityIcon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: cardFontSize(scaledIconPointSize), weight: .semibold))
                 .foregroundStyle(activityColor)
                 .frame(width: 18, height: 18)
 
@@ -95,7 +105,7 @@ struct ToolActivityGroupView: View {
             Spacer(minLength: 6)
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
+                .font(.system(size: cardFontSize(scaledCaptionPointSize), weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
@@ -103,14 +113,14 @@ struct ToolActivityGroupView: View {
 
     private var titleText: some View {
         Text(group.activityTitle)
-            .font(AppFont.caption(weight: .semibold))
+            .font(.system(size: cardFontSize(scaledCaptionPointSize), weight: .semibold))
             .foregroundStyle(.primary)
             .lineLimit(1)
     }
 
     private func summaryTextView(lineLimit: Int) -> some View {
         Text(summaryText)
-            .font(AppFont.caption())
+            .font(.system(size: cardFontSize(scaledCaptionPointSize)))
             .foregroundStyle(.secondary)
             .lineLimit(lineLimit)
     }
