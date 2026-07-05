@@ -16,6 +16,7 @@ struct SessionListView: View {
     @Binding private var requestedNewChat: NewChatRequest?
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -109,6 +110,15 @@ struct SessionListView: View {
             deleteProject: delete,
             didCompleteInitialLoad: $didCompleteInitialLoad
         )
+        // Returning from the background can miss any amount of server-side activity
+        // (new sessions, finished streams, renames), so refresh on foreground —
+        // mirrors ChatView.handleScenePhaseChange's `.active` reconnect. The
+        // didCompleteInitialLoad guard inside refreshAfterReturningIfNeeded keeps
+        // the launch-time `.inactive` -> `.active` transition from double-loading.
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            refreshAfterReturningIfNeeded()
+        }
     }
 
     private var phoneNavigationStack: some View {
