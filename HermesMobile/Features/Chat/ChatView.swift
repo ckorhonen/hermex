@@ -118,7 +118,10 @@ struct ChatView: View {
     @State private var shouldFollowLatestMessage = true
     @State private var followScrollGeneration = 0
     @State private var isUserInteractingWithScroll = false
-    @State private var userScrollCooldownUntil: Date?
+    /// Follow-scroll cooldown deadline. A reference box, not `@State Date?` —
+    /// it changes on every scroll-metrics delivery during a drag and is only
+    /// read imperatively, so it must not invalidate the body per frame.
+    @State private var userScrollCooldown = ChatScrollCooldownBox()
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
@@ -209,6 +212,7 @@ struct ChatView: View {
             errorMessage: viewModel.sendErrorMessage,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage,
             contextWindowSnapshot: viewModel.contextWindowSnapshot,
+            supervisor: viewModel.supervisor,
             gitViewModel: gitAvailabilityViewModel,
             modelGroups: viewModel.modelCatalogGroups,
             selectedModelID: viewModel.selectedModelID,
@@ -1786,8 +1790,27 @@ struct ChatView: View {
         case .background:
             if viewModel.activeStreamID != nil {
                 beginResponseCompletionBackgroundTask()
+
+                // Supervised runs get a continued-processing task so the
+                // stream and the supervisor outlive the ~30s window (§13a).
+                if viewModel.supervisor?.isEnabled == true {
+                    SupervisorBackgroundKeeper.shared.extend(
+                        sessionTitle: displayTitle,
+                        shouldContinue: { [weak viewModel] in
+                            guard let viewModel else { return false }
+                            return viewModel.supervisor?.isEnabled == true
+                                && (viewModel.activeStreamID != nil
+                                    || viewModel.isStartingChat
+                                    || viewModel.supervisor?.activity == .evaluating)
+                        },
+                        onExpired: { [weak viewModel] in
+                            viewModel?.suspendStreamForBackground()
+                        }
+                    )
+                }
             }
         case .active:
+            SupervisorBackgroundKeeper.shared.endActiveTask()
             endResponseCompletionBackgroundTask()
             Task {
                 await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
@@ -1891,7 +1914,14 @@ struct ChatView: View {
         let taskIdentifier = UIApplication.shared.beginBackgroundTask(withName: "Hermes response completion") {
             Task { @MainActor in
                 endResponseCompletionBackgroundTask()
-                viewModel.suspendStreamForBackground()
+                // A supervised run may have a continued-processing task
+                // keeping the process alive past this window (submitted or
+                // already running); don't kill its stream. If iOS later
+                // expires that task, its onExpired callback suspends the
+                // stream instead.
+                if !SupervisorBackgroundKeeper.shared.isKeepingAlive {
+                    viewModel.suspendStreamForBackground()
+                }
             }
         }
 
@@ -1965,7 +1995,7 @@ struct ChatView: View {
         }
 
         if isUserInitiated {
-            userScrollCooldownUntil = nil
+            userScrollCooldown.deadline = nil
         }
 
         shouldFollowLatestMessage = true
@@ -2065,7 +2095,7 @@ struct ChatView: View {
         // Touching the scroll view pauses auto-follow for a short window so
         // streaming layout growth cannot yank the viewport mid-gesture.
         if metrics.isUserInteracting {
-            userScrollCooldownUntil = ChatScrollPolicy.cooldownDeadline()
+            userScrollCooldown.deadline = ChatScrollPolicy.cooldownDeadline()
         }
 
         if isNearBottom {
@@ -2092,13 +2122,13 @@ struct ChatView: View {
     private var isAutoFollowScrollPaused: Bool {
         ChatScrollPolicy.isAutoScrollPaused(
             isUserInteracting: isUserInteractingWithScroll,
-            cooldownUntil: userScrollCooldownUntil
+            cooldownUntil: userScrollCooldown.deadline
         )
     }
 
     private func prepareTranscriptForExplicitSend() {
         shouldFollowLatestMessage = true
-        userScrollCooldownUntil = nil
+        userScrollCooldown.deadline = nil
         if isReadingOlderTranscript {
             withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
                 isReadingOlderTranscript = false

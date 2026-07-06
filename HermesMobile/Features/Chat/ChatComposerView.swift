@@ -76,6 +76,8 @@ struct MessageComposerView: View {
     let errorMessage: String?
     let configurationErrorMessage: String?
     let contextWindowSnapshot: ContextWindowSnapshot?
+    /// nil when no Apple Intelligence model is available — hides the toggle.
+    let supervisor: ChatSupervisor?
     let gitViewModel: GitWorkspaceAvailabilityViewModel
     let modelGroups: [ModelCatalogGroup]
     let selectedModelID: String?
@@ -304,6 +306,8 @@ struct MessageComposerView: View {
                         modelMenu
 
                         reasoningMenu
+
+                        supervisorToggle
 
                         Spacer(minLength: 0)
 
@@ -762,6 +766,31 @@ struct MessageComposerView: View {
             chevronFont: metaChevronFont,
             onSelectReasoningEffort: onSelectReasoningEffort
         )
+    }
+
+    /// Per-session babysitter toggle (spec §13a). Hidden when no Apple
+    /// Intelligence model is available on this device.
+    @ViewBuilder
+    private var supervisorToggle: some View {
+        if let supervisor {
+            Button {
+                supervisor.setEnabled(!supervisor.isEnabled)
+            } label: {
+                Image(systemName: supervisor.isEnabled ? "eye.fill" : "eye")
+                    .font(metaControlFont)
+                    .foregroundStyle(supervisor.isEnabled ? Color.accentColor : metaControlColor)
+                    .frame(width: actionButtonSize, height: actionButtonSize)
+                    .chatMinimumHitTarget(in: Circle())
+            }
+            .buttonStyle(.chatTactile(.icon))
+            .disabled(isOfflineReadOnly)
+            .accessibilityLabel(
+                supervisor.isEnabled
+                    ? String(localized: "Turn off supervisor")
+                    : String(localized: "Turn on supervisor")
+            )
+            .accessibilityHint(String(localized: "When on, an Apple Intelligence model may reply to the agent for you in this chat."))
+        }
     }
 
     private func selectModel(_ option: ModelCatalogOption) {

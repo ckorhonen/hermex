@@ -1682,6 +1682,84 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.content, "Partial live answer.")
     }
 
+    /// Issue #32: `displayedReasoningGroups` is memoized — recomputed when its
+    /// inputs (messages, offset, archived groups) change, not on every read.
+    /// As a computed property it re-ran the full echo-stripping classification
+    /// pass over every loaded message on each ChatView body evaluation, and it
+    /// returned fresh array/string storage each time, defeating the transcript
+    /// rows' `.equatable()` short-circuit.
+    @MainActor
+    func testDisplayedReasoningGroupsAreMemoizedAndTrackMessageChanges() async throws {
+        let sessionJSON: @Sendable (String) -> String = { reasoning in
+            """
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Think it through",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Here is the answer.",
+                    "timestamp": 1770000101,
+                    "message_id": "assistant-1",
+                    "reasoning": "\(reasoning)"
+                  }
+                ]
+              }
+            }
+            """
+        }
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(sessionJSON("First I check the workspace."), for: request)
+        }
+
+        await viewModel.loadMessages()
+
+        let first = viewModel.displayedReasoningGroups
+        XCTAssertEqual(first.map(\.text), ["First I check the workspace."])
+        XCTAssertEqual(
+            first,
+            ChatViewModel.reasoningDisplayGroups(
+                messages: viewModel.messages,
+                messageOffset: viewModel.messagesOffset,
+                archivedGroups: viewModel.completedReasoningGroups
+            ),
+            "the memoized value must stay in sync with the pure classification function"
+        )
+
+        // Reads without a data change must return the same array storage — a
+        // recompute-per-read (the old computed property) hands back fresh
+        // storage every time and fails this identity check.
+        let second = viewModel.displayedReasoningGroups
+        let sharesStorage = first.withUnsafeBufferPointer { firstBuffer in
+            second.withUnsafeBufferPointer { secondBuffer in
+                firstBuffer.baseAddress == secondBuffer.baseAddress
+            }
+        }
+        XCTAssertTrue(
+            sharesStorage,
+            "repeated reads without message changes must return the memoized array, not a recomputed copy"
+        )
+
+        // A message change must still refresh the memoized groups.
+        MockURLProtocol.requestHandler = { request in
+            apiTestJSONResponse(sessionJSON("Then I re-check the tests."), for: request)
+        }
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(
+            viewModel.displayedReasoningGroups.map(\.text),
+            ["Then I re-check the tests."],
+            "memoization must recompute when messages change"
+        )
+    }
+
     @MainActor
     func testTransportReconnectUsesReplayWhenInactiveStreamHasJournal() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -1866,7 +1944,10 @@ final class ChatViewModelSendTests: XCTestCase {
     func testActiveStreamStatusRefreshWaitsForFinalTranscriptBeforeStoppingStream() async throws {
         let streamClient = SpySSEStreamingClient()
         var sessionReloadCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+        // Inert polling: on a starved CI runner this test's awaits can take
+        // whole seconds of wall clock, letting real-time pollers fire mid-test
+        // and add session reloads the checkpoints don't expect (PR #41 flake).
+        let viewModel = try makeViewModel(streamClient: streamClient, pollingIntervals: .testInert) { request in
             switch request.url?.path {
             case "/api/chat/start":
                 return apiTestJSONResponse("""
@@ -1959,7 +2040,8 @@ final class ChatViewModelSendTests: XCTestCase {
     func testActiveStreamStatusRefreshTreatsToolOnlyAssistantAsCompletedResponse() {
         runMainActorTest {
             let streamClient = SpySSEStreamingClient()
-            let viewModel = try self.makeViewModel(streamClient: streamClient) { request in
+            // Inert polling: see the note on the waits-for-final-transcript test.
+            let viewModel = try self.makeViewModel(streamClient: streamClient, pollingIntervals: .testInert) { request in
                 switch request.url?.path {
                 case "/api/chat/start":
                     return apiTestJSONResponse("""
@@ -6380,6 +6462,10 @@ final class ChatViewModelSendTests: XCTestCase {
         await Task { @MainActor in }.value
     }
 
+    // Wall-clock-inert polling for tests whose awaits can take seconds on a
+    // starved CI runner: real-time pollers must not fire mid-test.
+    // (PR #41 CI flake: extra session reloads between checkpoints.)
+
     @MainActor
     private func makeViewModel(
         streamClient: SSEStreamingClient? = nil,
@@ -6444,7 +6530,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     private func runMainActorTest(
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval = 30,
         _ body: @escaping @MainActor () async throws -> Void
     ) {
         let expectation = expectation(description: "MainActor async test")
@@ -6701,4 +6787,14 @@ private final class SpySSEStreamingClient: SSEStreamingClient {
             flushPendingStreamingContent?()
         }
     }
+}
+
+/// One-hour intervals: long enough that no real-time poller can fire within
+/// any plausible starved-CI test duration, without changing poller code paths.
+private extension ChatPollingIntervals {
+    static let testInert = ChatPollingIntervals(
+        approvalNanoseconds: 3_600_000_000_000,
+        clarificationNanoseconds: 3_600_000_000_000,
+        backgroundNanoseconds: 3_600_000_000_000
+    )
 }

@@ -24,6 +24,14 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         XCTAssertEqual(ChatMarkerMessageClassifier.classify(message), .contextCompaction)
     }
 
+    func testPriorContextReferencePrefixMatches() {
+        let message = makeMessage(
+            role: "assistant",
+            content: "[PRIOR CONTEXT — for reference only; not a new message]\nEarlier work summary"
+        )
+        XCTAssertEqual(ChatMarkerMessageClassifier.classify(message), .contextCompaction)
+    }
+
     func testToolRoleNeverMatches() {
         let message = makeMessage(role: "tool", content: "[context compaction] details")
         XCTAssertNil(ChatMarkerMessageClassifier.classify(message))
@@ -57,9 +65,17 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         XCTAssertEqual(ChatMarkerMessageClassifier.classify(message), .preservedTaskList)
     }
 
-    func testPreservedTaskListPrefixDoesNotMatchNonUserRoles() {
+    func testPreservedTaskListPrefixMatchesForAssistantRole() {
         let message = makeMessage(
             role: "assistant",
+            content: "[Your active task list was preserved across context compression] tasks"
+        )
+        XCTAssertEqual(ChatMarkerMessageClassifier.classify(message), .preservedTaskList)
+    }
+
+    func testPreservedTaskListPrefixDoesNotMatchToolRole() {
+        let message = makeMessage(
+            role: "tool",
             content: "[Your active task list was preserved across context compression] tasks"
         )
         XCTAssertNil(ChatMarkerMessageClassifier.classify(message))

@@ -24,6 +24,10 @@ struct MessageBubbleView: View {
 
     @State private var isUserBubbleExpanded = false
 
+    /// Parsed once per row: whether this message carries the supervisor
+    /// marker, and its display text with the marker stripped (spec §13a).
+    private let supervisorAttribution: (isSupervisor: Bool, body: String)
+
     /// Stores a clamped transcript font scale so all row-local font and spacing
     /// math uses the same bounded value as the transcript environment.
     init(
@@ -39,6 +43,7 @@ struct MessageBubbleView: View {
         isStreaming: Bool = false
     ) {
         self.message = message
+        self.supervisorAttribution = SupervisorMessageMarker.unmark(message.content ?? "")
         self.chatFontScale = ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
         self.loadAttachmentImage = loadAttachmentImage
         self.loadAttachmentData = loadAttachmentData
@@ -75,6 +80,9 @@ struct MessageBubbleView: View {
                 HStack(alignment: .bottom, spacing: 0) {
                     Spacer(minLength: userBubbleLeadingGutter)
                     VStack(alignment: .trailing, spacing: scaledTranscriptSpacing(8)) {
+                        if isSupervisorMessage {
+                            supervisorBadge
+                        }
                         if hasVisibleUserBubbleText {
                             userBubble
                         }
@@ -233,6 +241,22 @@ struct MessageBubbleView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(userBubbleBorder, lineWidth: 0.5)
         )
+    }
+
+    /// Attribution chip for supervisor-authored messages (spec §13a) so the
+    /// owner can always tell which "user" messages the babysitter sent.
+    private var supervisorBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "eye.fill")
+                .font(AppFont.caption2())
+            Text(String(localized: "Supervisor"))
+                .font(AppFont.caption2(weight: .semibold))
+        }
+        .foregroundStyle(ZoraBrand.secondaryForeground)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(ZoraBrand.subtleFill, in: Capsule())
+        .accessibilityLabel(String(localized: "Sent by the supervisor"))
     }
 
     @ViewBuilder
@@ -412,9 +436,15 @@ struct MessageBubbleView: View {
     /// when the user has opted to hide it. Display-only: `message.content` and the
     /// sent payload are untouched.
     private var userBubbleText: String {
-        let content = message.content ?? ""
+        // Supervisor-authored messages carry a durable plain-text marker in the
+        // server transcript (spec §13a); render it as the badge instead of text.
+        let content = supervisorAttribution.body
         guard hidesAttachmentPaths else { return content }
         return MessageAttachment.contentWithoutAttachedFilesMarker(in: content)
+    }
+
+    private var isSupervisorMessage: Bool {
+        supervisorAttribution.isSupervisor
     }
 
     private var showsUserBubbleExpansionControl: Bool {
