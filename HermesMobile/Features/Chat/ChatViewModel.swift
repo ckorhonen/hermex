@@ -289,6 +289,10 @@ final class ChatViewModel {
     private var needsComposerConfigurationReload = false
     private var pendingExplicitModelPick = false
 
+    /// Per-session babysitter (spec §13a). nil when no Apple Intelligence
+    /// model is available on this device — the composer hides the toggle.
+    private(set) var supervisor: ChatSupervisor?
+
     init(
         session: SessionSummary,
         server: URL,
@@ -304,7 +308,8 @@ final class ChatViewModel {
         streamingWordRevealCadenceNanoseconds: UInt64 = 48_000_000,
         streamingMaxRevealLagNanoseconds: UInt64 = 1_000_000_000,
         speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
-        listenAudioSession: (any ListenAudioSessionControlling)? = nil
+        listenAudioSession: (any ListenAudioSessionControlling)? = nil,
+        supervisorModel: (any SupervisorModeling)? = nil
     ) {
         sessionID = session.sessionId
         currentWorkspace = session.workspace
@@ -343,6 +348,61 @@ final class ChatViewModel {
         self.streamCoordinator.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
         self.attachmentCoordinator.delegate = self
+        configureSupervisorIfAvailable(model: supervisorModel ?? SupervisorModelFactory.makeDefault())
+    }
+
+    private func configureSupervisorIfAvailable(model: (any SupervisorModeling)?) {
+        guard let model, let sessionID else { return }
+        let supervisor = ChatSupervisor(sessionID: sessionID, model: model)
+        supervisor.sendReply = { [weak self] markedText in
+            await self?.sendSupervisorReply(markedText) ?? false
+        }
+        supervisor.postLocalNotice = { [weak self] notice in
+            _ = self?.appendLocalMessage(notice, role: "local_notice", idPrefix: "supervisor")
+        }
+        supervisor.hasPendingHumanPrompt = { [weak self] in
+            guard let self else { return true }
+            return approvalPrompt != nil || clarificationPrompt != nil
+        }
+        supervisor.notifyEscalation = { [weak self] reason in
+            guard let self else { return }
+            let sessionTitle = String(localized: "Supervisor: \(displayTitle)")
+            Task {
+                guard await ResponseCompletionNotificationService.authorizationStatus() == .authorized else { return }
+                await UserNotificationResponseCompletionScheduler().schedule(
+                    ResponseCompletionNotificationRequest(
+                        sessionID: self.sessionID,
+                        sessionTitle: sessionTitle,
+                        responsePreview: reason
+                    )
+                )
+            }
+        }
+        self.supervisor = supervisor
+    }
+
+    /// Sends a supervisor-authored (marker-prefixed) message through the exact
+    /// human send path, minus composer attachments. Refuses when a send or
+    /// stream is already in flight — the supervisor never races the owner.
+    private func sendSupervisorReply(_ markedText: String) async -> Bool {
+        guard !isViewingCachedData,
+              !isStartingChat,
+              !isSendingVoiceNote,
+              activeStreamID == nil,
+              let sessionID
+        else { return false }
+
+        return await performChatSend(
+            sessionID: sessionID,
+            localMessageID: "local-\(UUID().uuidString)",
+            displayContent: markedText,
+            messageForAPI: markedText,
+            messageAttachments: [],
+            apiPayloads: nil,
+            attachmentsToRestoreOnFailure: [],
+            modelContext: nil,
+            isSupervisorSend: true
+        )
     }
 
     deinit {
@@ -1879,8 +1939,14 @@ final class ChatViewModel {
         messageAttachments: [MessageAttachment],
         apiPayloads: [JSONValue]?,
         attachmentsToRestoreOnFailure: [PendingAttachment],
-        modelContext: ModelContext?
+        modelContext: ModelContext?,
+        isSupervisorSend: Bool = false
     ) async -> Bool {
+        if !isSupervisorSend {
+            // A human-authored send resets the supervisor's auto-reply budget
+            // and cancels any evaluation of the now-superseded response.
+            supervisor?.humanDidSend()
+        }
         isStartingChat = true
         sendErrorMessage = nil
         lastError = nil
@@ -4494,6 +4560,36 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
         responseCompletionNeedsTranscriptRefresh = false
+        if let supervisor, supervisor.isEnabled, let context = supervisorContext() {
+            supervisor.responseDidComplete(context: context)
+        }
+    }
+
+    /// The transcript slice the supervisor is allowed to judge: the completed
+    /// assistant response, the owner's last message, and a short digest of
+    /// recent turns. nil when there is no completed assistant text yet.
+    private func supervisorContext() -> SupervisorContext? {
+        guard let assistantResponse = messages.reversed().first(where: {
+            $0.role == "assistant" && !($0.content ?? "").isEmpty
+        })?.content else { return nil }
+
+        let lastUserMessage = messages.reversed().first(where: {
+            $0.role == "user" && !($0.content ?? "").isEmpty
+        })?.content
+
+        let history = messages.suffix(12).compactMap { message -> String? in
+            guard let role = message.role, role == "user" || role == "assistant",
+                  let content = message.content, !content.isEmpty
+            else { return nil }
+            return "\(role): \(SupervisorPromptBuilder.truncatingMiddle(content, to: 400))"
+        }
+
+        return SupervisorContext(
+            sessionTitle: displayTitle,
+            lastUserMessage: lastUserMessage,
+            assistantResponse: assistantResponse,
+            recentHistory: history.dropLast().suffix(8).map { $0 }
+        )
     }
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {

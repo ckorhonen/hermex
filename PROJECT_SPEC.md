@@ -794,6 +794,50 @@ These are useful directions, not approved v1 scope. Before implementing any item
 
 ---
 
+## 13a. Chat Supervisor (owner-approved, 2026-07)
+
+A per-session "babysitter": when an assistant response completes, an Apple Intelligence
+model triages it and, when appropriate, sends a proactive follow-up on the owner's
+behalf — confirming a proposed next step, nudging a run that stopped early or answered
+lazily, or escalating to the owner. Approved by the owner in July 2026; app-only, no
+server or deploy impact.
+
+**Models (two tiers, provider-abstracted):**
+- Tier 1 (gate): cheap classification of the completed response — does it need any
+  action at all? Runs on the on-device `SystemLanguageModel` (FoundationModels,
+  iOS 26+, Apple Intelligence hardware).
+- Tier 2 (verdict): decides the action and drafts the reply. Prefers Apple's
+  **Private Cloud Compute** model (`PrivateCloudComputeLanguageModel`, iOS 27+,
+  32K context). The PCC adapter compiles only under an iOS 27 SDK via the
+  `HERMEX_PCC` compilation condition (SDK-conditional in `Config/Shared.xcconfig`);
+  when absent or unavailable at runtime it falls back to the on-device model.
+- No Apple Intelligence at all → the composer toggle is hidden. Transcript context
+  never leaves the device except to Apple PCC (stateless, Apple-attested).
+
+**UX:**
+- Toggle lives in the chat composer's accessory controls, per-session, off by
+  default, persisted locally keyed by session ID (not a server field).
+- Every supervisor-sent message goes through the normal `/api/chat/start` path with
+  a leading `[Supervisor]` text marker, so the action is durably documented in the
+  server-side chat history for every client. Hermex renders the marker as a
+  "Supervisor" badge on the bubble instead of raw text.
+- Escalations surface as a local notification plus an in-chat notice; the supervisor
+  never auto-sends an escalation.
+
+**Guardrails (hard rules):**
+- Acts only on *completed* responses; never steers mid-stream.
+- Never responds to approval or clarification prompts — those stay human-only.
+- Max 5 auto-sends per session between human messages; a human message resets the
+  budget. Minimum 20s cooldown between supervisor sends.
+- Supervisor messages are always marked; it never impersonates the owner silently.
+
+**Background:** while supervision is on and a run is active, the app extends its
+background lifetime (existing background-task window plus `BGContinuedProcessingTask`
+on iOS 26+). iOS may still end it; supervision resumes on next foreground. True 24/7
+coverage stays a server-side concern, out of scope here.
+
+---
+
 ## 14. Open questions for the human owner
 
 Stop and ask before guessing:

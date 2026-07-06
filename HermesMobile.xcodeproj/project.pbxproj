@@ -121,6 +121,14 @@
 		1A2B3C4D5E6F70000000152 /* MessageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000153 /* MessageAttachment.swift */; };
 		1A2B3C4D5E6F70000000200 /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000201 /* Memory.swift */; };
 		1A2B3C4D5E6F70000000202 /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000203 /* MemoryView.swift */; };
+		5E1BABE00000000000000001 /* SupervisorTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000011 /* SupervisorTypes.swift */; };
+		5E1BABE00000000000000002 /* SupervisorPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000012 /* SupervisorPolicy.swift */; };
+		5E1BABE00000000000000003 /* SupervisorPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000013 /* SupervisorPromptBuilder.swift */; };
+		5E1BABE00000000000000004 /* SupervisorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000014 /* SupervisorModel.swift */; };
+		5E1BABE00000000000000005 /* OnDeviceSupervisorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000015 /* OnDeviceSupervisorModel.swift */; };
+		5E1BABE00000000000000006 /* PCCSupervisorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000016 /* PCCSupervisorModel.swift */; };
+		5E1BABE00000000000000007 /* ChatSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000017 /* ChatSupervisor.swift */; };
+		5E1BABE00000000000000008 /* SupervisorBackgroundKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000018 /* SupervisorBackgroundKeeper.swift */; };
 		1A2B3C4D5E6F70000000204 /* MemoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000205 /* MemoryViewModel.swift */; };
 		1A2B3C4D5E6F70000000210 /* Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000211 /* Skills.swift */; };
 		1A2B3C4D5E6F70000000212 /* SkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000213 /* SkillsView.swift */; };
@@ -305,6 +313,7 @@
 		C1A042000000000000000001 /* Clarification.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000002 /* Clarification.swift */; };
 		C1A042000000000000000003 /* ClarificationRequestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000004 /* ClarificationRequestOverlay.swift */; };
 		C1A042000000000000000005 /* ClarificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000006 /* ClarificationTests.swift */; };
+		5E1BABE00000000000000031 /* ChatSupervisorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1BABE00000000000000032 /* ChatSupervisorTests.swift */; };
 		C21200000000000000000001 /* StreamingWordDrain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000002 /* StreamingWordDrain.swift */; };
 		C21200000000000000000003 /* StreamingWordDrainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000004 /* StreamingWordDrainTests.swift */; };
 		C21200000000000000000005 /* ChatViewModelStreamingPaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */; };
@@ -473,6 +482,7 @@
 		C1A042000000000000000002 /* Clarification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clarification.swift; sourceTree = "<group>"; };
 		C1A042000000000000000004 /* ClarificationRequestOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationRequestOverlay.swift; sourceTree = "<group>"; };
 		C1A042000000000000000006 /* ClarificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationTests.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000032 /* ChatSupervisorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSupervisorTests.swift; sourceTree = "<group>"; };
 		A02400000000000000000002 /* Goal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goal.swift; sourceTree = "<group>"; };
 		C04600000000000000000002 /* ChatStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinator.swift; sourceTree = "<group>"; };
 		C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -583,6 +593,14 @@
 		1A2B3C4D5E6F70000000153 /* MessageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachment.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000201 /* Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Memory.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000203 /* MemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryView.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000011 /* SupervisorTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupervisorTypes.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000012 /* SupervisorPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupervisorPolicy.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000013 /* SupervisorPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupervisorPromptBuilder.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000014 /* SupervisorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupervisorModel.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000015 /* OnDeviceSupervisorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSupervisorModel.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000016 /* PCCSupervisorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCCSupervisorModel.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000017 /* ChatSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSupervisor.swift; sourceTree = "<group>"; };
+		5E1BABE00000000000000018 /* SupervisorBackgroundKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupervisorBackgroundKeeper.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000205 /* MemoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryViewModel.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000211 /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000213 /* SkillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsView.swift; sourceTree = "<group>"; };
@@ -929,6 +947,7 @@
 				C21300000000000000000006 /* StreamingTextFadeTests.swift */,
 				C23400000000000000000006 /* StreamingLabReplayTests.swift */,
 				C1A042000000000000000006 /* ClarificationTests.swift */,
+				5E1BABE00000000000000032 /* ChatSupervisorTests.swift */,
 				1A2B3C4D5E6F7000000000F4 /* CacheStoreTests.swift */,
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
 				1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */,
@@ -1048,8 +1067,24 @@
 				1A2B3C4D5E6F70000000216 /* Skills */,
 				1A2B3C4D5E6F70000000206 /* Memory */,
 				B50E1CE3A8912B92B1924714 /* Insights */,
+				5E1BABE00000000000000020 /* Supervisor */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		5E1BABE00000000000000020 /* Supervisor */ = {
+			isa = PBXGroup;
+			children = (
+				5E1BABE00000000000000011 /* SupervisorTypes.swift */,
+				5E1BABE00000000000000012 /* SupervisorPolicy.swift */,
+				5E1BABE00000000000000013 /* SupervisorPromptBuilder.swift */,
+				5E1BABE00000000000000014 /* SupervisorModel.swift */,
+				5E1BABE00000000000000015 /* OnDeviceSupervisorModel.swift */,
+				5E1BABE00000000000000016 /* PCCSupervisorModel.swift */,
+				5E1BABE00000000000000017 /* ChatSupervisor.swift */,
+				5E1BABE00000000000000018 /* SupervisorBackgroundKeeper.swift */,
+			);
+			path = Supervisor;
 			sourceTree = "<group>";
 		};
 		C0DE57000000000000000005 /* Wiki */ = {
@@ -1714,6 +1749,14 @@
 				1A2B3C4D5E6F70000000200 /* Memory.swift in Sources */,
 				1A2B3C4D5E6F70000000202 /* MemoryView.swift in Sources */,
 				1A2B3C4D5E6F70000000204 /* MemoryViewModel.swift in Sources */,
+				5E1BABE00000000000000001 /* SupervisorTypes.swift in Sources */,
+				5E1BABE00000000000000002 /* SupervisorPolicy.swift in Sources */,
+				5E1BABE00000000000000003 /* SupervisorPromptBuilder.swift in Sources */,
+				5E1BABE00000000000000004 /* SupervisorModel.swift in Sources */,
+				5E1BABE00000000000000005 /* OnDeviceSupervisorModel.swift in Sources */,
+				5E1BABE00000000000000006 /* PCCSupervisorModel.swift in Sources */,
+				5E1BABE00000000000000007 /* ChatSupervisor.swift in Sources */,
+				5E1BABE00000000000000008 /* SupervisorBackgroundKeeper.swift in Sources */,
 				1A2B3C4D5E6F70000000210 /* Skills.swift in Sources */,
 				1A2B3C4D5E6F70000000212 /* SkillsView.swift in Sources */,
 				1A2B3C4D5E6F70000000214 /* SkillsViewModel.swift in Sources */,
@@ -1784,6 +1827,7 @@
 				C21300000000000000000005 /* StreamingTextFadeTests.swift in Sources */,
 				C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */,
 				C1A042000000000000000005 /* ClarificationTests.swift in Sources */,
+				5E1BABE00000000000000031 /* ChatSupervisorTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000F2 /* CacheStoreTests.swift in Sources */,
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,
 				1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */,
@@ -1924,7 +1968,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = targeted;
 			};

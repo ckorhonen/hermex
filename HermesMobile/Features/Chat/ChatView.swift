@@ -212,6 +212,7 @@ struct ChatView: View {
             errorMessage: viewModel.sendErrorMessage,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage,
             contextWindowSnapshot: viewModel.contextWindowSnapshot,
+            supervisor: viewModel.supervisor,
             gitViewModel: gitAvailabilityViewModel,
             modelGroups: viewModel.modelCatalogGroups,
             selectedModelID: viewModel.selectedModelID,
@@ -1789,8 +1790,23 @@ struct ChatView: View {
         case .background:
             if viewModel.activeStreamID != nil {
                 beginResponseCompletionBackgroundTask()
+
+                // Supervised runs get a continued-processing task so the
+                // stream and the supervisor outlive the ~30s window (§13a).
+                if viewModel.supervisor?.isEnabled == true {
+                    SupervisorBackgroundKeeper.shared.extend(
+                        sessionTitle: displayTitle
+                    ) { [weak viewModel] in
+                        guard let viewModel else { return false }
+                        return viewModel.supervisor?.isEnabled == true
+                            && (viewModel.activeStreamID != nil
+                                || viewModel.isStartingChat
+                                || viewModel.supervisor?.activity == .evaluating)
+                    }
+                }
             }
         case .active:
+            SupervisorBackgroundKeeper.shared.endActiveTask()
             endResponseCompletionBackgroundTask()
             Task {
                 await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
@@ -1894,7 +1910,11 @@ struct ChatView: View {
         let taskIdentifier = UIApplication.shared.beginBackgroundTask(withName: "Hermes response completion") {
             Task { @MainActor in
                 endResponseCompletionBackgroundTask()
-                viewModel.suspendStreamForBackground()
+                // A supervised run may have a continued-processing task keeping
+                // the process alive past this window; don't kill its stream.
+                if !SupervisorBackgroundKeeper.shared.isActive {
+                    viewModel.suspendStreamForBackground()
+                }
             }
         }
 
