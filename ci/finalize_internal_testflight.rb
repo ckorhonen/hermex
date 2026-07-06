@@ -159,18 +159,10 @@ class InternalTestFlightFinalizer
   end
 
   def add_build_to_groups(build_id, groups)
-    current_ids = fetch_paginated_json("/v1/builds/#{build_id}/relationships/betaGroups", "limit" => "200")
-                  .map { |group| group.fetch("id") }
-    missing_groups = groups.reject { |group| current_ids.include?(group.fetch("id")) }
-
-    if missing_groups.empty?
-      puts "Build #{build_id} is already assigned to requested internal group(s)."
-      return
-    end
-
     post_json(
       "/v1/builds/#{build_id}/relationships/betaGroups",
-      "data" => missing_groups.map { |group| { "type" => "betaGroups", "id" => group.fetch("id") } }
+      "data" => groups.map { |group| { "type" => "betaGroups", "id" => group.fetch("id") } },
+      ignore_conflict: true
     )
   end
 
@@ -219,11 +211,11 @@ class InternalTestFlightFinalizer
     data
   end
 
-  def post_json(path, payload)
-    request_json(Net::HTTP::Post, api_url(path, {}), payload: payload)
+  def post_json(path, payload, ignore_conflict: false)
+    request_json(Net::HTTP::Post, api_url(path, {}), payload: payload, ignore_conflict: ignore_conflict)
   end
 
-  def request_json(request_class, url, payload: nil)
+  def request_json(request_class, url, payload: nil, ignore_conflict: false)
     request = request_class.new(url)
     request["Authorization"] = "Bearer #{jwt_token}"
     request["Accept"] = "application/json"
@@ -243,12 +235,18 @@ class InternalTestFlightFinalizer
     end
 
     unless response.is_a?(Net::HTTPSuccess)
+      return parse_response_body(response) if ignore_conflict && response.is_a?(Net::HTTPConflict)
+
       raise FinalizationError, "App Store Connect request failed with HTTP #{response.code}: #{response.body}"
     end
 
-    response.body.to_s.empty? ? {} : JSON.parse(response.body)
+    parse_response_body(response)
   rescue JSON::ParserError => error
     raise FinalizationError, "App Store Connect returned invalid JSON: #{error.message}"
+  end
+
+  def parse_response_body(response)
+    response.body.to_s.empty? ? {} : JSON.parse(response.body)
   end
 
   def api_url(path, params)
