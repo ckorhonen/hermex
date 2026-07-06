@@ -41,12 +41,30 @@ struct SupervisorVerdict: Equatable, Sendable {
 /// The slice of a session the supervisor is allowed to look at.
 struct SupervisorContext: Equatable, Sendable {
     var sessionTitle: String?
-    /// Most recent user-authored message, if any (may be a prior supervisor nudge).
+    /// Most recent human-authored message (supervisor nudges excluded so the
+    /// model never mistakes its own prior reply for an owner instruction).
     var lastUserMessage: String?
     /// The completed assistant response being triaged.
     var assistantResponse: String
-    /// Short older-history digest lines, oldest first (already truncated by caller).
+    /// Server message ID of that response, used to dedupe stream replays.
+    var assistantMessageID: String?
+    /// Short older-history digest lines, oldest first (already truncated by
+    /// caller); supervisor-sent turns appear with a "supervisor:" role label.
     var recentHistory: [String]
+
+    init(
+        sessionTitle: String? = nil,
+        lastUserMessage: String? = nil,
+        assistantResponse: String,
+        assistantMessageID: String? = nil,
+        recentHistory: [String] = []
+    ) {
+        self.sessionTitle = sessionTitle
+        self.lastUserMessage = lastUserMessage
+        self.assistantResponse = assistantResponse
+        self.assistantMessageID = assistantMessageID
+        self.recentHistory = recentHistory
+    }
 }
 
 /// Why the supervisor is not allowed to send right now.

@@ -18,7 +18,15 @@ enum SupervisorModelError: Error {
 /// PCC (iOS 27+, compiled under `HERMEX_PCC`) → on-device (iOS 26+) → nil.
 /// A nil result means the feature is hidden entirely.
 enum SupervisorModelFactory {
-    static func makeDefault() -> SupervisorModeling? {
+    /// Model availability is fixed for the process lifetime; resolve once
+    /// instead of re-probing FoundationModels on every chat open.
+    private static let cachedDefault: (any SupervisorModeling)? = resolveDefault()
+
+    static func makeDefault() -> (any SupervisorModeling)? {
+        cachedDefault
+    }
+
+    private static func resolveDefault() -> (any SupervisorModeling)? {
         #if HERMEX_PCC
         if #available(iOS 27.0, *), let pcc = PCCSupervisorModel.ifAvailable() {
             return pcc

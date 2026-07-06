@@ -828,8 +828,15 @@ server or deploy impact.
 - Acts only on *completed* responses; never steers mid-stream.
 - Never responds to approval or clarification prompts — those stay human-only.
 - Max 5 auto-sends per session between human messages; a human message resets the
-  budget. Minimum 20s cooldown between supervisor sends.
+  budget. Minimum 20s cooldown between supervisor sends. The budget/cooldown gate
+  applies **only to auto-replies** — escalations to the owner always go through,
+  including (especially) after the reply budget is spent.
 - Supervisor messages are always marked; it never impersonates the owner silently.
+  Note: the `[Supervisor]` marker is part of the message text, so the agent sees it
+  in its prompt — intentional, so the agent knows which instructions came from the
+  babysitter rather than the owner. The supervisor's own context builder likewise
+  labels prior supervisor turns as `supervisor:` and never presents them as the
+  owner's words.
 
 **Background:** while supervision is on and a run is active, the app extends its
 background lifetime (existing background-task window plus `BGContinuedProcessingTask`

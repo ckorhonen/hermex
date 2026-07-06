@@ -25,7 +25,7 @@ final class ChatSupervisor {
     private let now: () -> Date
     private let defaults: UserDefaults
     /// Avoids re-judging the same response on stream replays/reconnects.
-    private var lastEvaluatedFingerprint: Int?
+    private var lastEvaluatedFingerprint: String?
     @ObservationIgnored private var evaluationTask: Task<Void, Never>?
 
     /// Sends the (already marker-prefixed) reply into the session. Returns
@@ -79,7 +79,11 @@ final class ChatSupervisor {
     /// Entry point, called when an assistant response completes.
     func responseDidComplete(context: SupervisorContext) {
         guard isEnabled else { return }
-        let fingerprint = context.assistantResponse.hashValue
+        // Dedupe stream replays/reconnects by the assistant message's stable
+        // server ID; hash the text only for messages that don't carry one.
+        // Distinct IDs with identical text still evaluate (a looping agent
+        // repeating itself verbatim is exactly a case worth judging).
+        let fingerprint = context.assistantMessageID ?? "hash:\(context.assistantResponse.hashValue)"
         guard fingerprint != lastEvaluatedFingerprint else { return }
         lastEvaluatedFingerprint = fingerprint
 
@@ -100,16 +104,10 @@ final class ChatSupervisor {
             activity = .skipped(String(localized: "waiting on you"))
             return
         }
-        if let denial = policy.sendDenial(at: now()) {
-            switch denial {
-            case .budgetExhausted(let limit):
-                activity = .skipped(String(localized: "auto-reply limit (\(limit)) reached"))
-                postLocalNotice?(String(localized: "Supervisor paused: \(limit) auto-replies sent since your last message."))
-            case .coolingDown:
-                activity = .skipped(String(localized: "cooling down"))
-            }
-            return
-        }
+        // Deliberately NOT gated on the send budget/cooldown here: those only
+        // limit auto-replies (checked at send time in apply). Escalations must
+        // reach the owner even after the reply budget is spent — that is
+        // precisely when a risky response most needs a human.
 
         activity = .evaluating
         do {
@@ -140,10 +138,21 @@ final class ChatSupervisor {
                 activity = .idle
                 return
             }
-            // Re-check the guardrails at send time: the model call took real
-            // time, and a pending prompt may have arrived meanwhile.
-            if hasPendingHumanPrompt?() == true || policy.sendDenial(at: now()) != nil {
-                activity = .skipped(String(localized: "conditions changed"))
+            // Guardrails are checked at send time (after the slow model call):
+            // a pending prompt may have arrived meanwhile, and the reply
+            // budget/cooldown applies only to this branch, never to escalate.
+            if hasPendingHumanPrompt?() == true {
+                activity = .skipped(String(localized: "waiting on you"))
+                return
+            }
+            if let denial = policy.sendDenial(at: now()) {
+                switch denial {
+                case .budgetExhausted(let limit):
+                    activity = .skipped(String(localized: "auto-reply limit (\(limit)) reached"))
+                    postLocalNotice?(String(localized: "Supervisor paused: \(limit) auto-replies sent since your last message."))
+                case .coolingDown:
+                    activity = .skipped(String(localized: "cooling down"))
+                }
                 return
             }
             let sent = await sendReply?(SupervisorMessageMarker.mark(reply)) ?? false

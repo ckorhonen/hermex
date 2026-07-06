@@ -194,6 +194,33 @@ final class ChatSupervisorTests: XCTestCase {
         XCTAssertEqual(sentTexts.count, 2)
     }
 
+    func testEscalationFiresEvenWhenReplyBudgetExhausted() async {
+        let model = MockSupervisorModel()
+        var clock = Date(timeIntervalSince1970: 3_000)
+        let supervisor = makeSupervisor(
+            model: model,
+            policy: SupervisorPolicy(maxSendsPerHumanTurn: 1, cooldown: 0),
+            now: { clock }
+        )
+        var escalations: [String] = []
+        supervisor.sendReply = { _ in true }
+        supervisor.notifyEscalation = { escalations.append($0) }
+
+        // First response consumes the entire reply budget.
+        supervisor.responseDidComplete(context: makeContext(response: "First response"))
+        await supervisor.waitForEvaluation()
+
+        // A risky follow-up must still reach the owner despite the exhausted
+        // budget — the budget gates replies, never escalations.
+        model.verdictResult = SupervisorVerdict(action: .escalate, reply: nil, rationale: "wants to rm -rf")
+        clock = clock.addingTimeInterval(60)
+        supervisor.responseDidComplete(context: makeContext(response: "Second, risky response"))
+        await supervisor.waitForEvaluation()
+
+        XCTAssertEqual(escalations, ["wants to rm -rf"])
+        XCTAssertEqual(supervisor.activity, .escalated)
+    }
+
     func testCooldownBlocksBackToBackSends() async {
         let model = MockSupervisorModel()
         let fixedNow = Date(timeIntervalSince1970: 2_000)

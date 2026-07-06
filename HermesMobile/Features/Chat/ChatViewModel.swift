@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import Observation
 import SwiftData
+import UIKit
 
 struct ApprovalPromptState: Equatable, Identifiable {
     var id: String {
@@ -367,14 +368,19 @@ final class ChatViewModel {
         supervisor.notifyEscalation = { [weak self] reason in
             guard let self else { return }
             let sessionTitle = String(localized: "Supervisor: \(displayTitle)")
+            // Reuses the completion-notification policy so provisional/
+            // ephemeral authorization counts and foreground scenes aren't
+            // buzzed (the in-transcript notice covers the foreground case).
+            // Supervision being on is the preference for escalations.
+            let sceneIsActive = UIApplication.shared.applicationState == .active
             Task {
-                guard await ResponseCompletionNotificationService.authorizationStatus() == .authorized else { return }
-                await UserNotificationResponseCompletionScheduler().schedule(
-                    ResponseCompletionNotificationRequest(
-                        sessionID: self.sessionID,
-                        sessionTitle: sessionTitle,
-                        responsePreview: reason
-                    )
+                await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
+                    sessionID: self.sessionID,
+                    sessionTitle: sessionTitle,
+                    responsePreview: reason,
+                    preferenceEnabled: true,
+                    completedNormally: true,
+                    sceneIsActive: sceneIsActive
                 )
             }
         }
@@ -4569,26 +4575,35 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     /// assistant response, the owner's last message, and a short digest of
     /// recent turns. nil when there is no completed assistant text yet.
     private func supervisorContext() -> SupervisorContext? {
-        guard let assistantResponse = messages.reversed().first(where: {
+        guard let assistantMessage = messages.reversed().first(where: {
             $0.role == "assistant" && !($0.content ?? "").isEmpty
-        })?.content else { return nil }
+        }), let assistantResponse = assistantMessage.content else { return nil }
 
-        let lastUserMessage = messages.reversed().first(where: {
-            $0.role == "user" && !($0.content ?? "").isEmpty
+        // The owner's last message must be human-authored: supervisor nudges
+        // are stored as marked "user" messages, and feeding one back as the
+        // owner's instruction would let the supervisor amplify itself.
+        let lastUserMessage = messages.reversed().first(where: { message in
+            guard message.role == "user", let content = message.content, !content.isEmpty else { return false }
+            return !SupervisorMessageMarker.unmark(content).isSupervisor
         })?.content
 
+        // Last ~8 turns before the response under judgment, oldest first,
+        // with supervisor-sent turns labeled as such (not as the owner).
         let history = messages.suffix(12).compactMap { message -> String? in
             guard let role = message.role, role == "user" || role == "assistant",
                   let content = message.content, !content.isEmpty
             else { return nil }
-            return "\(role): \(SupervisorPromptBuilder.truncatingMiddle(content, to: 400))"
+            let unmarked = SupervisorMessageMarker.unmark(content)
+            let label = unmarked.isSupervisor ? "supervisor" : role
+            return "\(label): \(SupervisorPromptBuilder.truncatingMiddle(unmarked.body, to: 400))"
         }
 
         return SupervisorContext(
             sessionTitle: displayTitle,
             lastUserMessage: lastUserMessage,
             assistantResponse: assistantResponse,
-            recentHistory: history.dropLast().suffix(8).map { $0 }
+            assistantMessageID: assistantMessage.messageId,
+            recentHistory: Array(history.dropLast().suffix(8))
         )
     }
 

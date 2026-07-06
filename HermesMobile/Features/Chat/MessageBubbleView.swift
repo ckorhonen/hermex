@@ -24,6 +24,10 @@ struct MessageBubbleView: View {
 
     @State private var isUserBubbleExpanded = false
 
+    /// Parsed once per row: whether this message carries the supervisor
+    /// marker, and its display text with the marker stripped (spec §13a).
+    private let supervisorAttribution: (isSupervisor: Bool, body: String)
+
     /// Stores a clamped transcript font scale so all row-local font and spacing
     /// math uses the same bounded value as the transcript environment.
     init(
@@ -39,6 +43,7 @@ struct MessageBubbleView: View {
         isStreaming: Bool = false
     ) {
         self.message = message
+        self.supervisorAttribution = SupervisorMessageMarker.unmark(message.content ?? "")
         self.chatFontScale = ChatTranscriptDisplaySettings.clampedFontScale(chatFontScale)
         self.loadAttachmentImage = loadAttachmentImage
         self.loadAttachmentData = loadAttachmentData
@@ -433,13 +438,13 @@ struct MessageBubbleView: View {
     private var userBubbleText: String {
         // Supervisor-authored messages carry a durable plain-text marker in the
         // server transcript (spec §13a); render it as the badge instead of text.
-        let content = SupervisorMessageMarker.unmark(message.content ?? "").body
+        let content = supervisorAttribution.body
         guard hidesAttachmentPaths else { return content }
         return MessageAttachment.contentWithoutAttachedFilesMarker(in: content)
     }
 
     private var isSupervisorMessage: Bool {
-        SupervisorMessageMarker.unmark(message.content ?? "").isSupervisor
+        supervisorAttribution.isSupervisor
     }
 
     private var showsUserBubbleExpansionControl: Bool {

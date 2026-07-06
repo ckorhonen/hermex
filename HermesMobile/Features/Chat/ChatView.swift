@@ -1795,14 +1795,18 @@ struct ChatView: View {
                 // stream and the supervisor outlive the ~30s window (§13a).
                 if viewModel.supervisor?.isEnabled == true {
                     SupervisorBackgroundKeeper.shared.extend(
-                        sessionTitle: displayTitle
-                    ) { [weak viewModel] in
-                        guard let viewModel else { return false }
-                        return viewModel.supervisor?.isEnabled == true
-                            && (viewModel.activeStreamID != nil
-                                || viewModel.isStartingChat
-                                || viewModel.supervisor?.activity == .evaluating)
-                    }
+                        sessionTitle: displayTitle,
+                        shouldContinue: { [weak viewModel] in
+                            guard let viewModel else { return false }
+                            return viewModel.supervisor?.isEnabled == true
+                                && (viewModel.activeStreamID != nil
+                                    || viewModel.isStartingChat
+                                    || viewModel.supervisor?.activity == .evaluating)
+                        },
+                        onExpired: { [weak viewModel] in
+                            viewModel?.suspendStreamForBackground()
+                        }
+                    )
                 }
             }
         case .active:
@@ -1910,9 +1914,12 @@ struct ChatView: View {
         let taskIdentifier = UIApplication.shared.beginBackgroundTask(withName: "Hermes response completion") {
             Task { @MainActor in
                 endResponseCompletionBackgroundTask()
-                // A supervised run may have a continued-processing task keeping
-                // the process alive past this window; don't kill its stream.
-                if !SupervisorBackgroundKeeper.shared.isActive {
+                // A supervised run may have a continued-processing task
+                // keeping the process alive past this window (submitted or
+                // already running); don't kill its stream. If iOS later
+                // expires that task, its onExpired callback suspends the
+                // stream instead.
+                if !SupervisorBackgroundKeeper.shared.isKeepingAlive {
                     viewModel.suspendStreamForBackground()
                 }
             }
