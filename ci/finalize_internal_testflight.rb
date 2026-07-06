@@ -235,14 +235,18 @@ class InternalTestFlightFinalizer
     end
 
     unless response.is_a?(Net::HTTPSuccess)
-      return {} if ignore_conflict && response.is_a?(Net::HTTPConflict)
+      return parse_response_body(response) if ignore_conflict && response.is_a?(Net::HTTPConflict)
 
       raise FinalizationError, "App Store Connect request failed with HTTP #{response.code}: #{response.body}"
     end
 
-    response.body.to_s.empty? ? {} : JSON.parse(response.body)
+    parse_response_body(response)
   rescue JSON::ParserError => error
     raise FinalizationError, "App Store Connect returned invalid JSON: #{error.message}"
+  end
+
+  def parse_response_body(response)
+    response.body.to_s.empty? ? {} : JSON.parse(response.body)
   end
 
   def api_url(path, params)
