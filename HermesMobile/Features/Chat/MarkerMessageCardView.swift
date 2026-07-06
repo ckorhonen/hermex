@@ -137,7 +137,23 @@ struct MarkerMessageCardView: View {
             return kind.title
         }
 
+        if kind == .contextCompaction {
+            return String(localized: "Reference only · \(truncated(compactionPreview(from: oneLine)))")
+        }
+
         return truncated(oneLine)
+    }
+
+    private func compactionPreview(from oneLine: String) -> String {
+        guard oneLine.hasPrefix("["),
+              let markerEnd = oneLine.firstIndex(of: "]")
+        else {
+            return oneLine
+        }
+
+        let afterMarker = oneLine.index(after: markerEnd)
+        let preview = String(oneLine[afterMarker...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return preview.isEmpty ? String(localized: "Reference only") : preview
     }
 
     private func truncated(_ oneLine: String) -> String {

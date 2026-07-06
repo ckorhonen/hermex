@@ -509,7 +509,7 @@ struct SessionListRowsSection: View {
 
     private func childCountBadge(_ count: Int) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "arrow.triangle.branch")
+            Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 9, weight: .bold))
             Text("\(count)")
                 .font(AppFont.caption2(weight: .bold))
@@ -522,7 +522,13 @@ struct SessionListRowsSection: View {
             Capsule()
                 .stroke(ZoraBrand.surfaceHairlineStrong.opacity(0.6), lineWidth: 0.75)
         }
-        .accessibilityHidden(true)
+        .accessibilityLabel(relatedSessionsAccessibilityLabel(count))
+    }
+
+    private func relatedSessionsAccessibilityLabel(_ count: Int) -> String {
+        count == 1
+            ? String(localized: "1 related session")
+            : String(localized: "\(count) related sessions")
     }
 
     @ViewBuilder
