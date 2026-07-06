@@ -36,6 +36,13 @@ class InternalTestFlightFinalizerTest < Minitest::Test
     assert InternalTestFlightFinalizer.failed_processing_state?("FAILED")
   end
 
+  def test_internal_group_accepts_boolean_or_string_true
+    assert InternalTestFlightFinalizer.internal_group?({ "attributes" => { "isInternalGroup" => true } })
+    assert InternalTestFlightFinalizer.internal_group?({ "attributes" => { "isInternalGroup" => "true" } })
+    refute InternalTestFlightFinalizer.internal_group?({ "attributes" => { "isInternalGroup" => false } })
+    refute InternalTestFlightFinalizer.internal_group?({ "attributes" => { "isInternalGroup" => "false" } })
+  end
+
   def test_internal_testing_state_requires_in_beta_testing
     assert InternalTestFlightFinalizer.internal_testing_state?("IN_BETA_TESTING")
     refute InternalTestFlightFinalizer.internal_testing_state?("READY_FOR_BETA_TESTING")

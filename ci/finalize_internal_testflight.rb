@@ -43,6 +43,11 @@ class InternalTestFlightFinalizer
     !state.empty? && !processed_build?(state) && !TRANSIENT_BUILD_STATES.include?(state)
   end
 
+  def self.internal_group?(group)
+    value = group.dig("attributes", "isInternalGroup")
+    value == true || value.to_s.casecmp("true").zero?
+  end
+
   def self.internal_testing_state?(state)
     ACCEPTED_INTERNAL_STATES.include?(state.to_s)
   end
@@ -142,7 +147,7 @@ class InternalTestFlightFinalizer
       "limit" => "200"
     )
 
-    internal = groups.select { |group| group.dig("attributes", "isInternalGroup") == true }
+    internal = groups.select { |group| self.class.internal_group?(group) }
     raise FinalizationError, "No internal TestFlight groups found for app #{app_id}." if internal.empty?
 
     internal.map do |group|
