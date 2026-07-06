@@ -6,6 +6,12 @@ struct HermesMobileApp: App {
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 
+    init() {
+        // BGTaskScheduler requires launch-time registration, before any
+        // supervised run can request continued background processing (§13a).
+        SupervisorBackgroundKeeper.shared.registerLaunchHandlerIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             #if DEBUG

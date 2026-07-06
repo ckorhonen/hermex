@@ -6,6 +6,14 @@
 // CONTRIBUTING.md ("Code signing for contributors").
 
 DEVELOPMENT_TEAM = CY4LHQ7XSH
+
+// Chat Supervisor PCC tier: PrivateCloudComputeLanguageModel exists only in the
+// iOS 27 SDK. These SDK-conditional flags compile the PCC adapter in
+// automatically when the project is built with Xcode 27+, and compile it out
+// (falling back to the on-device model) on Xcode 26 toolchains.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited)
+SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27*] = $(inherited) HERMEX_PCC
+SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27*] = $(inherited) HERMEX_PCC
 APP_IDENTIFIER_SUFFIX =
 APP_BUNDLE_IDENTIFIER = com.sourcebottle.hermex$(APP_IDENTIFIER_SUFFIX)
 APP_GROUP_IDENTIFIER = group.com.sourcebottle.hermex$(APP_IDENTIFIER_SUFFIX)
