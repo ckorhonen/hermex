@@ -43,6 +43,23 @@ class InternalTestFlightFinalizerTest < Minitest::Test
     refute InternalTestFlightFinalizer.internal_group?({ "attributes" => { "isInternalGroup" => "false" } })
   end
 
+  def test_add_build_to_groups_posts_payload_and_uses_idempotent_conflict_handling
+    recorder = Class.new(InternalTestFlightFinalizer) do
+      attr_reader :posted
+
+      def post_json(path, payload, ignore_conflict: false)
+        @posted = { path: path, payload: payload, ignore_conflict: ignore_conflict }
+      end
+    end
+
+    finalizer = recorder.allocate
+    finalizer.send(:add_build_to_groups, "build-1", [{ "id" => "group-1" }])
+
+    assert_equal "/v1/builds/build-1/relationships/betaGroups", finalizer.posted[:path]
+    assert_equal({ "data" => [{ "type" => "betaGroups", "id" => "group-1" }] }, finalizer.posted[:payload])
+    assert_equal true, finalizer.posted[:ignore_conflict]
+  end
+
   def test_internal_testing_state_requires_in_beta_testing
     assert InternalTestFlightFinalizer.internal_testing_state?("IN_BETA_TESTING")
     refute InternalTestFlightFinalizer.internal_testing_state?("READY_FOR_BETA_TESTING")

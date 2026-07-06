@@ -161,7 +161,7 @@ class InternalTestFlightFinalizer
   def add_build_to_groups(build_id, groups)
     post_json(
       "/v1/builds/#{build_id}/relationships/betaGroups",
-      "data" => groups.map { |group| { "type" => "betaGroups", "id" => group.fetch("id") } },
+      { "data" => groups.map { |group| { "type" => "betaGroups", "id" => group.fetch("id") } } },
       ignore_conflict: true
     )
   end
