@@ -1,0 +1,105 @@
+# Maintainer-only: assigns an already uploaded build to internal TestFlight groups.
+# Requires the repo's APP_STORE_CONNECT_* secrets from the internal-testflight environment.
+name: Finalize Internal TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_internal_only:
+        description: "Type INTERNAL to confirm this assignment is for internal TestFlight only."
+        required: true
+        type: string
+      build_number:
+        description: "CFBundleVersion/build number to assign to internal testers."
+        required: true
+        type: string
+      marketing_version:
+        description: "Optional marketing version filter, for example 1.4."
+        required: false
+        type: string
+        default: ""
+      internal_group_names:
+        description: "Comma-separated internal TestFlight group names."
+        required: false
+        type: string
+        default: "Internal Testers"
+
+run-name: "Finalize Internal TestFlight build ${{ inputs.build_number }}"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finalize-internal-testflight
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Assign Build to Internal Testers
+    runs-on: macos-26
+    environment: internal-testflight
+    timeout-minutes: 45
+
+    env:
+      APP_STORE_CONNECT_APP_ID: 6786898470
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      MARKETING_VERSION: ${{ inputs.marketing_version }}
+      INTERNAL_GROUP_NAMES: ${{ inputs.internal_group_names }}
+      WAIT_TIMEOUT_SECONDS: 1800
+      POLL_SECONDS: 30
+
+    steps:
+      - name: Check finalization gate
+        env:
+          CONFIRM_INTERNAL_ONLY: ${{ inputs.confirm_internal_only }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" != "master" ]]; then
+            echo "Internal TestFlight finalization must run from master. Current ref: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+          if [[ "${CONFIRM_INTERNAL_ONLY}" != "INTERNAL" ]]; then
+            echo "Manual finalization must set confirm_internal_only to INTERNAL." >&2
+            exit 1
+          fi
+
+      - name: Check required secrets
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for name in \
+            APP_STORE_CONNECT_KEY_ID \
+            APP_STORE_CONNECT_ISSUER_ID \
+            APP_STORE_CONNECT_PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required secret: ${name}" >&2
+              missing=1
+            fi
+          done
+
+          exit "${missing}"
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Write App Store Connect key
+        run: |
+          set -euo pipefail
+
+          key_path="${RUNNER_TEMP}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          if [[ "${APP_STORE_CONNECT_PRIVATE_KEY}" == *"\\n"* ]]; then
+            printf "%s" "${APP_STORE_CONNECT_PRIVATE_KEY}" | perl -pe 's/\\n/\n/g' > "${key_path}"
+          else
+            printf "%s" "${APP_STORE_CONNECT_PRIVATE_KEY}" > "${key_path}"
+          fi
+          chmod 600 "${key_path}"
+          echo "APP_STORE_CONNECT_KEY_PATH=${key_path}" >> "${GITHUB_ENV}"
+
+      - name: Assign build to internal testers
+        run: ruby ci/finalize_internal_testflight.rb
