@@ -102,7 +102,7 @@ XcodeBuildMCP is the preferred local validation path for feature and bug-fix sli
 - Scheme: `HermesMobile`
 - Configuration: `Debug`
 - Simulator: `iPhone 17`
-- Bundle ID: `com.uzairansar.hermesmobile`
+- Bundle ID: `com.sourcebottle.hermex`
 
 After each completed implementation slice:
 
@@ -116,7 +116,7 @@ After each completed implementation slice:
 Agent/MCP flow:
 
 - Call `session_show_defaults` before the first local build/run/test.
-- If defaults are missing, set project `HermesMobile.xcodeproj`, scheme `HermesMobile`, configuration `Debug`, simulator `iPhone 17`, and bundle ID `com.uzairansar.hermesmobile`.
+- If defaults are missing, set project `HermesMobile.xcodeproj`, scheme `HermesMobile`, configuration `Debug`, simulator `iPhone 17`, and bundle ID `com.sourcebottle.hermex`.
 - Use `test_sim` for XCTest validation.
 - Use `build_run_sim` to build, install, launch, and open Simulator for manual testing.
 - Use `screenshot`, UI inspection, and log capture only when they help validate the slice.
@@ -182,15 +182,17 @@ not installed, choose a nearby available iPhone simulator.
 
 ## TestFlight Readiness Notes
 
-Current status:
+Current status (repo-side facts from `Config/Shared.xcconfig` + `project.pbxproj` —
+when docs and xcconfig disagree, trust the xcconfig):
 
-- App Store Connect app name: `Hermex`.
 - Xcode target/scheme name: `HermesMobile`.
-- iPhone home-screen display name: `Hermex`.
-- Bundle ID: `com.uzairansar.hermesmobile`.
-- Test bundle ID: `com.uzairansar.hermesmobile.tests`.
-- SKU: `hermes-mobile-ios`.
-- Apple Developer Team ID: `6GYD9C9N6R`.
+- iPhone home-screen display name: `Zora` (the app was rebranded from Hermex).
+- Bundle ID: `com.sourcebottle.hermex`.
+- Test bundle ID: `com.sourcebottle.hermex.tests`.
+- Apple Developer Team ID: `CY4LHQ7XSH`.
+- App Store Connect listing name and SKU: managed in ASC, not the repo — verify
+  there before relying on them (older docs said `Hermex` / `hermes-mobile-ios`,
+  which predate the Zora rebrand).
 - Signing uses Xcode automatic signing.
 - Export compliance is declared in `Info.plist` with `ITSAppUsesNonExemptEncryption = NO`; the app does not implement custom/proprietary encryption and uses normal Apple/platform networking security.
 - App icon uses owner-supplied light and dark assets in `AppIcon.appiconset`.
@@ -199,32 +201,35 @@ Current status:
 - Camera capture is deferred and is not declared. Add `NSCameraUsageDescription` and update the privacy review only if camera capture is implemented later.
 - The current GitHub Actions upload path is intentionally internal-only. External TestFlight readiness and Beta App Review sequencing are tracked in [`TESTFLIGHT.md`](TESTFLIGHT.md).
 
-### Owner checklist: App Store Connect rename to Hermex
+### Owner checklist: App Store Connect rename to Hermex (superseded)
 
-After merging the repo rebrand slice, update App Store Connect metadata separately:
+> Superseded by the later **Zora** rebrand (bundle `com.sourcebottle.hermex`,
+> display name `Zora` / `Zora Branch`). Kept for history; do not action.
 
-1. Production app (`com.uzairansar.hermesmobile`): rename listing from `Hermes Agent Mobile` → `Hermex`.
-2. Branch TestFlight app (`com.uzairansar.hermesmobile.branch`): rename listing from `Hermes Agent Branch` → `Hermex Branch`.
-3. Update TestFlight/review notes and any metadata copy that still says the old app name.
-4. Upload a build and confirm TestFlight shows **Hermex** / **Hermex Branch** on the home screen after processing.
+1. ~~Production app: rename listing from `Hermes Agent Mobile` → `Hermex`.~~
+2. ~~Branch TestFlight app: rename listing from `Hermes Agent Branch` → `Hermex Branch`.~~
+3. ~~Update TestFlight/review notes and any metadata copy that still says the old app name.~~
+4. ~~Upload a build and confirm the new names on the home screen after processing.~~
 
 ### Branch TestFlight upload (CLI) — the "push to branch testflight" command
 
 When the owner says **"push to branch testflight"**, upload the current *feature branch*
-to the side-by-side **Hermex Branch** internal TestFlight app. This is a TestFlight
+to the side-by-side **Zora Branch** internal TestFlight app. This is a TestFlight
 upload, **not** a Git push. Never merge, Git push, or upload the production
-`com.uzairansar.hermesmobile` TestFlight app unless the owner explicitly asks.
+`com.sourcebottle.hermex` TestFlight app unless the owner explicitly asks (and note
+that merging a PR to `master` already uploads the production internal build via
+`.github/workflows/internal-testflight.yml`).
 
-Branch TestFlight app identity:
+Branch TestFlight app identity (derived from `Config/BranchTestFlight.xcconfig`):
 
-- App Store Connect app name: `Hermex Branch`
-- Main bundle ID: `com.uzairansar.hermesmobile.branch`
-- Share extension bundle ID: `com.uzairansar.hermesmobile.branch.shareextension`
-- Live Activity widget bundle ID: `com.uzairansar.hermesmobile.branch.liveactivitywidget`
-- Display name: `Hermex Branch`
-- App group: `group.com.uzairansar.hermesmobile.branch`
+- Main bundle ID: `com.sourcebottle.hermex.branch`
+- Share extension bundle ID: `com.sourcebottle.hermex.branch.shareextension`
+- Live Activity widget bundle ID: `com.sourcebottle.hermex.branch.liveactivitywidget`
+- Display name: `Zora Branch`
+- App group: `group.com.sourcebottle.hermex.branch`
 - URL scheme: `hermes-agent-branch`
-- SKU: `hermes-mobile-ios-branch`
+- App Store Connect listing name/SKU: verify in ASC (older docs said
+  `Hermex Branch` / `hermes-mobile-ios-branch`, which predate the Zora rebrand)
 
 Steps:
 
@@ -269,7 +274,7 @@ GitHub Actions internal TestFlight flow:
    - `APP_STORE_CONNECT_KEY_ID`: the App Store Connect API key ID.
    - `APP_STORE_CONNECT_ISSUER_ID`: the App Store Connect issuer ID.
    - `APP_STORE_CONNECT_PRIVATE_KEY`: the full `.p8` private key contents. A one-line value with escaped `\n` separators also works.
-3. Use an App Store Connect team API key with enough access to upload builds and let `xcodebuild -allowProvisioningUpdates` manage automatic signing for Team ID `6GYD9C9N6R`. If provisioning fails in CI, check the API key role, Apple Developer agreements, and App Store Connect access before changing the project to manual signing.
+3. Use an App Store Connect team API key with enough access to upload builds and let `xcodebuild -allowProvisioningUpdates` manage automatic signing for the team in `Config/Shared.xcconfig` (currently `CY4LHQ7XSH`). If provisioning fails in CI, check the API key role, Apple Developer agreements, and App Store Connect access before changing the project to manual signing.
 4. Run the `Internal TestFlight` workflow manually from the GitHub Actions tab after the workflow file exists on the default branch.
 5. Select `master` as the workflow ref, set `confirm_internal_only` to `INTERNAL`, and leave `build_number` blank so the workflow selects the next App Store Connect build number for the current marketing version.
 6. The workflow archives the Release build, uploads directly to App Store Connect, and uses `testFlightInternalTestingOnly = true` so uploaded builds cannot be promoted to external TestFlight or App Store distribution.
@@ -298,7 +303,7 @@ GitHub Actions external-capable TestFlight flow:
 ## Full-App Manual Regression Checklist
 
 Use this before internal TestFlight smoke builds and again before adding external testers.
-Capture bugs, polish notes, and follow-up ideas in [GitHub Issues](https://github.com/uzairansaruzi/hermex/issues).
+Capture bugs, polish notes, and follow-up ideas in the PR body or `CURRENT.md` — GitHub Issues are currently disabled on the fork (`ckorhonen/hermex`).
 
 ### Onboarding/Auth
 - Fresh install opens onboarding.

@@ -1,7 +1,8 @@
-# AGENTS.md — working agreement for Hermex
+# AGENTS.md — working agreement for Hermex/Zora
 
-Hermex is a native SwiftUI iPhone app (Xcode target/scheme `HermesMobile`, App Store
-name `Hermex`) for a self-hosted `hermes-webui` server. `PROJECT_SPEC.md` is the
+Hermex — since rebranded **Zora** on the home screen; the repo, Xcode target/scheme
+(`HermesMobile`), and docs keep the older names — is a native SwiftUI iPhone app for
+a self-hosted `hermes-webui` server. `PROJECT_SPEC.md` is the
 product/API source of truth — if a request conflicts with it, stop and ask.
 Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 
@@ -10,17 +11,26 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   local-only (gitignored), never committed; a fresh clone won't have one.
 - Read only the `PROJECT_SPEC.md` sections named in CURRENT.md's **Spec Read** field;
   never the whole ~850-line spec unless told to.
-- Active work lives in GitHub Issues. Implement only the issue the human selects, one
-  labeled `ready-for-agent`, or one named in CURRENT.md — not every open issue.
-- On "wrap up": verify repo/build/test state, overwrite `CURRENT.md` with the new
-  state (it stays uncommitted), then commit the code.
+- Active work lives in GitHub Issues when available — **issues are currently disabled
+  on the fork (`ckorhonen/hermex`), so `gh issue create` fails there**; with no issue,
+  use a `chore/` or `fix/` branch and put the scope in the PR body. Implement only the
+  issue the human selects, one labeled `ready-for-agent`, or one named in CURRENT.md —
+  not every open issue.
+- On "wrap up": verify repo/build/test state, then update `CURRENT.md` (it stays
+  uncommitted) and commit the code. **Re-read `CURRENT.md` immediately before writing
+  it** — concurrent agent sessions share this one file and a blind overwrite has
+  clobbered another session's wrap-up before; if it changed since session start,
+  merge your state in as a new section instead of replacing the content.
   History lives in `git log` and merged PRs; there is no append-only log.
 
 ## How work flows
 - One issue → one short `issue/<n>-slug` branch → one PR (branches with no issue use
   `chore/` or `fix/`). Issue/triage/domain conventions live in `docs/agents/`.
-- `master` is the protected release-candidate branch (the source for internal
-  TestFlight builds): keep it buildable, never do feature work on it.
+- `master` is the protected release-candidate branch: keep it buildable, never do
+  feature work on it. **Merging a PR to `master` automatically archives and uploads
+  an internal TestFlight build** of the production app via
+  `.github/workflows/internal-testflight.yml` — "ship to TestFlight" is usually
+  satisfied by the merge itself; don't also archive/upload manually.
 - Every PR needs an explicit deploy-impact classification. For app-only/no-deploy-impact
   changes, keep the diff to iOS app/docs/tests, verify any API shape against upstream or
   a running server, and call out in the PR that no server/Worker/signing/App Store Connect
@@ -70,15 +80,18 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   build + launch the app for the human's manual simulator test when UI changed.
 
 ## App identity (resolved via xcconfig — not grep-able)
-Bundle ID `com.uzairansar.hermesmobile` · tests `….tests` · Team `6GYD9C9N6R` · SKU `hermes-mobile-ios`.
+Ground truth is `Config/Shared.xcconfig` (+ `Config/BranchTestFlight.xcconfig` for
+branch builds); when docs and xcconfig disagree, trust the xcconfig. Currently:
+Bundle ID `com.sourcebottle.hermex` · tests `….tests` · Team `CY4LHQ7XSH` ·
+display name **Zora** (branch builds: **Zora Branch**).
 
 ## "push to branch testflight" (maintainer-only)
-Upload the current branch to the side-by-side **Hermex Branch** internal TestFlight app
-(`com.uzairansar.hermesmobile.branch`) — a TestFlight upload, **not** a git push.
+Upload the current branch to the side-by-side **Zora Branch** internal TestFlight app
+(`com.sourcebottle.hermex.branch`) — a TestFlight upload, **not** a git push.
 Requires the maintainer's App Store Connect access; contributors never need this. Use a
 unique `CURRENT_PROJECT_VERSION` (e.g. `YYYYMMDDHHMM`) each time. Full commands + branch
-identity: `DEVELOPMENT.md`. Never touch the production `com.uzairansar.hermesmobile` app
-unless explicitly asked.
+identity: `DEVELOPMENT.md`. Never touch the production `com.sourcebottle.hermex` app
+unless explicitly asked (remember: merging to `master` already uploads it via CI).
 
 ## Working with the human
 - Surface tradeoffs in plain English before non-obvious choices; when in doubt, ask.
