@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 struct WikiBrowserSheet: View {
@@ -262,9 +263,11 @@ final class WikiWebViewModel: NSObject, ObservableObject, WKNavigationDelegate {
     @Published private(set) var isLoading = false
 
     let webView: WKWebView
+    private let openExternalURL: (URL) -> Void
     private var observationTokens: [NSKeyValueObservation] = []
 
-    override init() {
+    init(openExternalURL: @escaping (URL) -> Void = WikiWebViewModel.defaultOpenExternalURL(_:)) {
+        self.openExternalURL = openExternalURL
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -296,6 +299,44 @@ final class WikiWebViewModel: NSObject, ObservableObject, WKNavigationDelegate {
     func goForward() {
         guard webView.canGoForward else { return }
         webView.goForward()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+
+        if Self.shouldOpenExternally(url) {
+            openExternalURL(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        decisionHandler(.allow)
+    }
+
+    static func shouldOpenExternally(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+
+        let externalAuthHosts: Set<String> = [
+            "accounts.google.com",
+            "myaccount.google.com",
+            "oauth2.googleapis.com"
+        ]
+
+        return externalAuthHosts.contains(host)
+            || externalAuthHosts.contains { host.hasSuffix(".\($0)") }
+    }
+
+    private static func defaultOpenExternalURL(_ url: URL) {
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
     }
 
     private func observeWebView() {

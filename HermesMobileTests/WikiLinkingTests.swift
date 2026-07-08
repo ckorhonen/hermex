@@ -94,6 +94,20 @@ final class WikiLinkingTests: XCTestCase {
         )
     }
 
+    func testWikiBrowserOpensGoogleOAuthExternally() throws {
+        let authURL = try XCTUnwrap(URL(string: "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc"))
+        let nestedAuthURL = try XCTUnwrap(URL(string: "https://login.accounts.google.com/signin/v2/identifier"))
+        let tokenURL = try XCTUnwrap(URL(string: "https://oauth2.googleapis.com/token"))
+        let wikiURL = try XCTUnwrap(URL(string: "https://wiki.sourcebottle.dev/apps/feedback-inbox"))
+        let googleSearchURL = try XCTUnwrap(URL(string: "https://www.google.com/search?q=hermes"))
+
+        XCTAssertTrue(WikiWebViewModel.shouldOpenExternally(authURL))
+        XCTAssertTrue(WikiWebViewModel.shouldOpenExternally(nestedAuthURL))
+        XCTAssertTrue(WikiWebViewModel.shouldOpenExternally(tokenURL))
+        XCTAssertFalse(WikiWebViewModel.shouldOpenExternally(wikiURL))
+        XCTAssertFalse(WikiWebViewModel.shouldOpenExternally(googleSearchURL))
+    }
+
     private func extractFirstURL(from markdown: String) throws -> URL {
         try XCTUnwrap(extractURLs(from: markdown).first)
     }
