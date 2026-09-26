@@ -103,3 +103,11 @@ unless explicitly asked (remember: merging to `master` already uploads it via CI
 If something here surprises you or contradicts the project, tell the developer and
 **propose** an AGENTS.md edit — don't silently edit it. This file is a Band-Aid for what
 can't be fixed in code/tests/tooling; your proposed edits are also a signal of what to fix structurally.
+
+## Component checks and bounded completion
+
+- `HermesMobile/` owns the app, `HermesMobileTests/` the XCTest suite, and `HermesShareExtension/` / `HermesLiveActivityWidget/` the extensions. Keep the source/spec, signed-simulator, independent-review, and release rules above intact.
+- `DEVELOPMENT.md` documents `scripts/check-swift-file-sizes` and the preferred `xcodebuildmcp simulator test --output jsonl` / `xcodebuildmcp simulator build-and-run --output jsonl` workflow. These complement the full XCTest requirement; a file-size check is not runtime proof.
+- `feedback-worker/` is a separate Node/TypeScript Worker package. Use its lockfile for `npm ci`, then `npm run typecheck` and `npm test` there. `migrate:local` applies local D1 migrations; `migrate:remote` and `deploy` mutate remote resources. An app-only task does not authorize Worker deployment, remote database changes, server configuration, or credential changes.
+- Carry the selected task through implementation, required checks, and repair of regressions. Choose ordinary reversible details directly; the spec's open questions, conflicts, new dependencies, destructive actions, and release boundaries still require the handling above. If a prerequisite blocks one check, name it and continue independent authorized work without claiming the gate passed.
+- For a deliberately instruction-only scope, verify referenced paths and command sources and run `git diff --check`; label these source checks separately from the full pre-review/pre-commit app checks. Report any explicitly scoped validation exemption rather than implying XCTest or simulator validation occurred.
